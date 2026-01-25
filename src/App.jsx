@@ -93,16 +93,26 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-100 py-10 px-4 font-sans">
       <div className="max-w-6xl mx-auto space-y-8">
-        {/* HEADER */}
+        {/* HEADER - UPDATED FOR MOBILE */}
         <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center gap-3 mb-4 md:mb-0">
-            <div className="bg-blue-600 text-white p-2 rounded-lg text-xl">🚀</div>
-            <h1 className="text-2xl font-bold text-gray-800">Profit Optimizer</h1>
+          <div className="flex items-center gap-3 mb-4 md:mb-0 w-full md:w-auto justify-between md:justify-start">
+            <div className="flex items-center gap-3">
+               <div className="bg-blue-600 text-white p-2 rounded-lg text-xl">🚀</div>
+               <h1 className="text-2xl font-bold text-gray-800">Profit Optimizer</h1>
+            </div>
+            {/* Mobile-only Logout (Optional, but let's keep it simple and just show the main one below) */}
           </div>
-          <div className="flex items-center gap-4">
-             <div className="text-right hidden md:block">
+          
+          <div className="flex items-center gap-4 w-full md:w-auto justify-end">
+             {/* REMOVED 'hidden md:block' -> Now visible on all screens */}
+             <div className="text-right">
               <p className="text-sm font-bold text-gray-700">{user.displayName}</p>
-              <button onClick={() => signOut(auth)} className="text-xs text-red-500 hover:underline">Logout</button>
+              <button 
+                onClick={() => signOut(auth)} 
+                className="text-xs text-red-600 font-bold border border-red-200 bg-red-50 px-3 py-1 rounded hover:bg-red-100 transition"
+              >
+                Logout
+              </button>
             </div>
             {user.photoURL && <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full border-2 border-white shadow-md" />}
           </div>
