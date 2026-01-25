@@ -1,82 +1,78 @@
-// --- PARSER V3.0: THE ELIMINATOR ---
+// src/utils/parser.js
 
-// 1. PHONE (Unchanged, it works well)
-export const findPhone = (text) => {
-  const cleanText = text.replace(/[- ]/g, ""); 
-  const phoneRegex = /(?:\+88|88)?(01[3-9]\d{8})/;
-  const match = cleanText.match(phoneRegex);
-  return match ? match[1] : "";
-};
-
-// 2. location src/utils/parser.js (Partial Update)
-
-export const detectLocation = (text) => {
-  const lowerText = text.toLowerCase();
+export const parseText = (text) => {
+    if (!text) return { name: '', phone: '', address: '' };
   
-  // EXPANDED KEYWORD LIST (Based on your Dataset)
-  const insideDhaka = [
-    // Standard Areas
-    "dhaka", "dhanmondi", "mirpur", "uttara", "banani", "gulshan", "bashundhara", 
-    "mohammadpur", "badda", "rampura", "farmgate", "motijheel", "lalmatia",
+    // 1. EXTRACT PHONE (The Anchor)
+    const phoneMatch = text.match(/(?:\+88)?01[3-9]\d{8}/);
+    const phone = phoneMatch ? phoneMatch[0] : '';
+  
+    // 2. STRATEGY A: LOOK FOR LABELS (The Fix for Kamal/Zentexx)
+    // We look for "Name: Something" or "Customer: Something"
+    const nameLabelRegex = /(?:Name|Customer|Receiver|Nam)[:\s-]*([^\n,]+)/i;
+    let nameMatch = text.match(nameLabelRegex);
+    let name = nameMatch ? nameMatch[1].trim() : '';
+  
+    // 3. CLEANUP FOR ADDRESS
+    // Remove the phone number
+    let cleanText = text.replace(phone, '');
     
-    // NEW from Dataset [cite: 6, 8, 9]
-    "dilkusha",       // From Singer Bangladesh
-    "mohakhali",      // From Square Toiletries
-    "tejgaon",        // From ACI Ltd & Kohinoor
-    "baridhara",      // From Bashundhara Group
-    "aftabnagar",     // From East West Media
-    "nikunja",        // From VPS.com.bd
-    "shantinagar", "malibagh", "maghbazar", "khilgaon" // Common neighbors
-  ];
+    // Remove "(who will receive...)" and other brackets
+    cleanText = cleanText.replace(/\(.*?\)/g, '');
   
-  const isInsideDhaka = insideDhaka.some(area => lowerText.includes(area));
-
-  // Logic: If it matches a keyword OR has a Dhaka Postal Code (1000-1399) [cite: 4]
-  // We add Regex for Postal Code to be even smarter.
-  const dhakaPostalRegex = /1[0-3]\d\d/; // Matches 1000 to 1399
-  const hasDhakaPostal = dhakaPostalRegex.test(text);
-
-  if (isInsideDhaka || hasDhakaPostal) {
-    return { city: "Dhaka", charge: 60 };
-  } else {
-    return { city: "Outside Dhaka", charge: 120 }; 
-  }
-};
-
-// 3. NAME (The New "Elimination" Logic)
-export const findName = (text) => {
-  // Strategy A: Explicit Label (Best Case)
-  // Looks for "Name: Rafiq" or "Nam: Rafiq"
-  const explicitRegex = /(?:name|nam|customer|bhai)[\s:.-]+([a-zA-Z\s]+)/i;
-  const match = text.match(explicitRegex);
-  if (match) return match[1].trim();
-
-  // Strategy B: The "Elimination" Method (Fallback)
-  // If there is no "Name:" label, we look for a line that is NOT a number and NOT a city.
+    // If we found a name via label, remove that specific line from the text
+    if (name) {
+      // Create a regex to find the name we found and remove it
+      const nameRemover = new RegExp(`(?:Name|Customer|Receiver|Nam)?[:\\s-]*${name}`, 'i');
+      cleanText = cleanText.replace(nameRemover, '');
+    }
   
-  // 1. Break text into chunks (by comma or new line)
-  const chunks = text.split(/,|\n/);
-
-  for (let chunk of chunks) {
-    let cleanChunk = chunk.trim();
-    
-    // Skip empty lines
-    if (cleanChunk.length < 2) continue;
-
-    // Skip if it contains digits (likely phone or house number)
-    if (/\d/.test(cleanChunk)) continue;
-
-    // Skip if it contains "Dhaka" or location keywords (likely address)
-    // We reuse the list from detectLocation logic concepts
-    const locationKeywords = ["dhaka", "road", "house", "sector", "banani", "mirpur", "bonani", "bunani"];
-    if (locationKeywords.some(kw => cleanChunk.toLowerCase().includes(kw))) continue;
-
-    // Skip common filler words
-    if (["send", "to", "plz", "please", "urgent"].includes(cleanChunk.toLowerCase())) continue;
-
-    // If it survived all those checks, IT IS LIKELY THE NAME
-    return cleanChunk; 
-  }
-
-  return ""; // If nothing matches
-};
+    // Remove leftover labels
+    cleanText = cleanText
+      .replace(/(Name|Customer|Receiver|Phone|Address|Mobile)[:\s-]*/gi, '')
+      .trim();
+  
+    // Split into lines for analysis
+    const lines = cleanText.split(/[\n,]+/).map(l => l.trim()).filter(l => l.length > 0);
+  
+    // 4. STRATEGY B: THE GUESSING GAME (Fallback)
+    // Only run this if we didn't find a name via label
+    let address = '';
+  
+    if (!name) {
+      const addressKeywords = [
+        "road", "house", "holding", "block", "sector", "lane", "flat", 
+        "dhaka", "chittagong", "sylhet", "narayanganj", "chashara", "comilla", 
+        "banani", "mirpur", "uttara", "gulshan", "badda", "gate", "temple" // Added "Gate" & "Temple"
+      ];
+  
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lowerLine = line.toLowerCase();
+        
+        // Is this line an address?
+        const isAddress = addressKeywords.some(keyword => lowerLine.includes(keyword));
+        const hasNumbers = /\d/.test(line);
+  
+        // If it's short, has no numbers, and NO address keywords -> It's the Name
+        if (!isAddress && line.length < 25 && !hasNumbers) {
+          name = line;
+          // The rest is address
+          address = lines.filter((_, index) => index !== i).join(', ');
+          break; 
+        }
+      }
+    }
+  
+    // If we still don't have an address (because we found name via label), 
+    // assume everything left in cleanText is the address.
+    if (!address) {
+       address = lines.join(', ');
+    }
+  
+    return {
+      name: name.substring(0, 30), // Safety cap
+      phone: phone,
+      address: address.substring(0, 120) // Safety cap
+    };
+  };

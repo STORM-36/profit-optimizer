@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
+// 👇 IMPORT THE BRAINS
+import { parseText } from '../utils/parser';
+import { SAMPLE_DATA } from '../utils/sampleData';
 
 const SmartForm = () => {
   const [inputText, setInputText] = useState('');
   
-  // STATE MANAGEMENT
   const [manualData, setManualData] = useState({
     name: '',
     phone: '',
@@ -13,33 +16,29 @@ const SmartForm = () => {
     sellingPrice: '', 
     productCost: '',
     deliveryCost: 120, 
-    adCost: 100       // Default Ad Cost
+    adCost: 100       
   });
 
-  // 1. PARSER
-  const parseOrder = () => {
-    const phoneMatch = inputText.match(/(01\d{9})/);
-    const nameMatch = inputText.match(/Name[:\s-]*([A-Za-z\s]+)/i); 
-    
-    let addressClean = inputText;
-    if (phoneMatch) addressClean = addressClean.replace(phoneMatch[0], '');
-    if (nameMatch) addressClean = addressClean.replace(nameMatch[0], '');
+  // ⚡ INSTANT PARSER (Now uses the external file)
+  useEffect(() => {
+    // Call the external brain
+    const result = parseText(inputText);
 
     setManualData(prev => ({
       ...prev,
-      phone: phoneMatch ? phoneMatch[0] : prev.phone,
-      name: nameMatch ? nameMatch[1].trim() : prev.name,
-      address: addressClean.substring(0, 80).trim() 
+      phone: result.phone || prev.phone,
+      name: result.name || prev.name,
+      address: result.address || prev.address
     }));
-  };
 
-  // 2. SAVER
+  }, [inputText]);
+
+  // 💾 SAVER
   const handleSave = async () => {
     if (!auth.currentUser) {
       alert("⚠️ Please Login First!");
       return;
     }
-
     const selling = parseFloat(manualData.sellingPrice);
     const product = parseFloat(manualData.productCost);
     const delivery = parseFloat(manualData.deliveryCost);
@@ -60,57 +59,49 @@ const SmartForm = () => {
         sellingPrice: selling,
         productCost: product,
         deliveryCost: delivery,
-        adCost: ads, // <--- SAVES THE LOCKED COST
+        adCost: ads,
         timestamp: serverTimestamp()
       });
 
-      // 3. AUTO-RESET
       setInputText(''); 
       setManualData({
-        name: '',
-        phone: '',
-        address: '',
-        sellingPrice: '', 
-        productCost: '',
-        deliveryCost: 120,
-        adCost: 100       
+        name: '', phone: '', address: '',
+        sellingPrice: '', productCost: '',
+        deliveryCost: 120, adCost: 100       
       });
-
       alert("✅ Order Saved!");
-
     } catch (error) {
       console.error("Error saving:", error);
       alert("❌ Error saving order");
     }
   };
 
+  // 🎲 LOAD RANDOM EXAMPLE (Now uses external data)
   const loadExample = () => {
-    setInputText("Example Order: Rahim 01711000000. House 10, Road 5, Dhaka.");
-    setManualData({
-      name: 'Rahim',
-      phone: '01711000000',
-      address: 'House 10, Road 5, Dhaka',
-      sellingPrice: '1500',
-      productCost: '800',
-      deliveryCost: 60,
-      adCost: 120
-    });
+    const random = SAMPLE_DATA[Math.floor(Math.random() * SAMPLE_DATA.length)];
+    setInputText(random.text);
+    setManualData(prev => ({
+      ...prev,
+      sellingPrice: random.sell,
+      productCost: random.cost
+    }));
   };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 max-w-2xl mx-auto mt-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold text-gray-800">📝 New Order</h2>
-        <button onClick={loadExample} className="text-xs text-blue-500 hover:underline">🎲 Load Example</button>
+        <button onClick={loadExample} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+          🎲 Load Sample Data
+        </button>
       </div>
 
       <textarea 
         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm mb-3"
-        rows="3"
-        placeholder="Paste text here..."
+        rows="4"
+        placeholder="Paste customer text here..."
         value={inputText}
-        onChange={(e) => setInputText(e.target.value)}
-        onBlur={parseOrder} 
+        onChange={(e) => setInputText(e.target.value)} 
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -118,13 +109,13 @@ const SmartForm = () => {
           type="text" placeholder="Name" 
           value={manualData.name}
           onChange={(e) => setManualData({...manualData, name: e.target.value})}
-          className="p-2 border rounded"
+          className="p-2 border rounded font-bold text-gray-700"
         />
         <input 
           type="text" placeholder="Phone" 
           value={manualData.phone}
           onChange={(e) => setManualData({...manualData, phone: e.target.value})}
-          className="p-2 border rounded"
+          className="p-2 border rounded font-bold text-gray-700"
         />
       </div>
 
@@ -132,10 +123,10 @@ const SmartForm = () => {
         type="text" placeholder="Address" 
         value={manualData.address}
         onChange={(e) => setManualData({...manualData, address: e.target.value})}
-        className="w-full p-2 border rounded mt-3"
+        className="w-full p-2 border rounded mt-3 text-sm text-gray-600"
       />
 
-      {/* 🟢 THIS IS THE NEW SECTION */}
+      {/* UNIT ECONOMICS */}
       <div className="bg-blue-50 p-4 rounded-xl mt-4 border border-blue-100">
         <h3 className="text-xs font-bold text-blue-800 uppercase mb-2">💰 Unit Economics</h3>
         <div className="grid grid-cols-2 gap-3">
@@ -166,8 +157,6 @@ const SmartForm = () => {
                     className="w-full p-2 border border-red-200 rounded text-red-600 bg-white"
                 />
             </div>
-            
-            {/* 🟢 THE MISSING AD COST BOX */}
             <div>
                 <label className="block text-xs text-blue-600 font-bold">Ad Cost (CPR)</label>
                 <input 

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { auth, provider, signInWithPopup, signOut } from './firebase'; 
-import SmartForm from './components/SmartForm'; // 👈 NEW IMPORT NAME
+// 👇 FIX: Split the imports into two lines
+import { auth, provider } from './firebase'; // Your local config
+import { signInWithPopup, signOut } from 'firebase/auth'; // Google's official library
+
+import SmartForm from './components/SmartForm'; 
 import OrderList from './components/OrderList'; 
 
 function App() {
