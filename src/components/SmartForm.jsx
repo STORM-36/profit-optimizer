@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-const OrderForm = () => {
+const SmartForm = () => {
   const [inputText, setInputText] = useState('');
   
   // STATE MANAGEMENT
@@ -190,4 +190,4 @@ const OrderForm = () => {
   );
 };
 
-export default OrderForm;
+export default SmartForm;
