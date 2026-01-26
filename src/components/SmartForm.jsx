@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-// 👇 IMPORT THE BRAINS
+// 👇 THESE IMPORTS MUST MATCH THE FILE NAMES EXACTLY
 import { parseText } from '../utils/parser';
 import { SAMPLE_DATA } from '../utils/sampleData';
 
@@ -19,9 +19,11 @@ const SmartForm = () => {
     adCost: 100       
   });
 
-  // ⚡ INSTANT PARSER (Now uses the external file)
+  // ⚡ INSTANT PARSER
   useEffect(() => {
-    // Call the external brain
+    // Safety Check: If parser is missing, do nothing
+    if (!parseText) return; 
+
     const result = parseText(inputText);
 
     setManualData(prev => ({
@@ -76,15 +78,21 @@ const SmartForm = () => {
     }
   };
 
-  // 🎲 LOAD RANDOM EXAMPLE (Now uses external data)
+  // 🎲 LOAD RANDOM EXAMPLE
   const loadExample = () => {
-    const random = SAMPLE_DATA[Math.floor(Math.random() * SAMPLE_DATA.length)];
-    setInputText(random.text);
-    setManualData(prev => ({
-      ...prev,
-      sellingPrice: random.sell,
-      productCost: random.cost
-    }));
+    // Safety Check: Ensure data exists before trying to load it
+    if (SAMPLE_DATA && SAMPLE_DATA.length > 0) {
+      const random = SAMPLE_DATA[Math.floor(Math.random() * SAMPLE_DATA.length)];
+      setInputText(random.text);
+      setManualData(prev => ({
+        ...prev,
+        sellingPrice: random.sell,
+        productCost: random.cost
+      }));
+    } else {
+        console.error("Sample Data is missing or empty!");
+        alert("⚠️ Could not load sample data. Check console.");
+    }
   };
 
   return (

@@ -1,5 +1,6 @@
 // src/utils/sampleData.js
 
+// 👇 The word "export" is crucial here!
 export const SAMPLE_DATA = [
     {
       text: "Sharmin shaba\nHolding 36, block D Adarsha Chashara chanmari, Narayanganj\n01749336026\n( who will receive the parcel only)",
@@ -17,4 +18,4 @@ export const SAMPLE_DATA = [
       text: "97, Buddhist Temple Road, Nandonkanon, Chattogram 4000.\nName: Zentexx Design\n01812345678",
       sell: 1500, cost: 900
     }
-  ];
+];
