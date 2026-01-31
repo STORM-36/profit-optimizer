@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import * as XLSX from 'xlsx'; // Import Excel Tool
 
-// 👇 THESE IMPORTS MUST MATCH THE FILE NAMES EXACTLY
 import { parseText } from '../utils/parser';
-import { SAMPLE_DATA } from '../utils/sampleData';
+import { SAMPLE_DATA } from '../utils/sampleData'; 
 
 const SmartForm = () => {
   const [inputText, setInputText] = useState('');
@@ -15,27 +15,63 @@ const SmartForm = () => {
     address: '',
     sellingPrice: '', 
     productCost: '',
-    deliveryCost: 120, 
-    adCost: 100       
+    deliveryCost: 120, // Default to outside Dhaka initially
+    adCost: ''         // FIXED: Now starts blank
   });
 
-  // ⚡ INSTANT PARSER
+// ⚡ SMART DETECTION LOGIC
   useEffect(() => {
-    // Safety Check: If parser is missing, do nothing
-    if (!parseText) return; 
+    if (!inputText) return; 
 
     const result = parseText(inputText);
+    
+    // LIST OF AREAS INSIDE DHAKA (English + Bangla)
+    // If any of these words appear, we charge 60 Tk.
+    const dhakaAreas = [
+      'dhaka', 'ঢাকা',
+      'mirpur', 'মিরপুর',
+      'uttara', 'উত্তরা',
+      'savar', 'সাভার',
+      'dhanmondi', 'ধানমন্ডি',
+      'gulshan', 'গুলশান',
+      'banani', 'বনানী',
+      'mohammadpur', 'মোহাম্মদপুর',
+      'farmgate', 'ফার্মগেট',
+      'motijheel', 'মতিঝিল',
+      'badda', 'বাড্ডা',
+      'jatrabari', 'যাত্রাবাড়ী',
+      'khilgaon', 'খিলগাঁও',
+      'rampura', 'রামপুরা',
+      'bashundhara', 'বসুন্ধরা',
+      'cantonment', 'ক্যান্টনমেন্ট',
+      'keraniganj', 'কেরানীগঞ্জ',
+      'new market', 'নিউ মার্কেট'
+    ];
+
+    let autoDelivery = 120; // Default: Outside Dhaka (120)
+    
+    if (result.address) {
+      const lowerAddress = result.address.toLowerCase();
+      
+      // Check if ANY keyword from our list is inside the address
+      const isInsideDhaka = dhakaAreas.some(area => lowerAddress.includes(area));
+      
+      if (isInsideDhaka) {
+        autoDelivery = 60; // Found a match! Set to 60.
+      }
+    }
 
     setManualData(prev => ({
       ...prev,
       phone: result.phone || prev.phone,
       name: result.name || prev.name,
-      address: result.address || prev.address
+      address: result.address || prev.address,
+      deliveryCost: autoDelivery 
     }));
 
   }, [inputText]);
 
-  // 💾 SAVER
+  // 💾 SAVE ORDER
   const handleSave = async () => {
     if (!auth.currentUser) {
       alert("⚠️ Please Login First!");
@@ -51,6 +87,10 @@ const SmartForm = () => {
       return;
     }
 
+    // Calculate Profit for this single order
+    const totalCost = (product || 0) + (delivery || 0) + (ads || 0);
+    const netProfit = selling - totalCost;
+
     try {
       await addDoc(collection(db, "orders"), {
         userId: auth.currentUser.uid,
@@ -59,17 +99,19 @@ const SmartForm = () => {
         phone: manualData.phone,
         address: manualData.address,
         sellingPrice: selling,
-        productCost: product,
-        deliveryCost: delivery,
-        adCost: ads,
+        productCost: product || 0,
+        deliveryCost: delivery || 0,
+        adCost: ads || 0,
+        netProfit: netProfit, // We save the profit now!
         timestamp: serverTimestamp()
       });
 
+      // Reset Form
       setInputText(''); 
       setManualData({
         name: '', phone: '', address: '',
         sellingPrice: '', productCost: '',
-        deliveryCost: 120, adCost: 100       
+        deliveryCost: 120, adCost: '' 
       });
       alert("✅ Order Saved!");
     } catch (error) {
@@ -78,9 +120,7 @@ const SmartForm = () => {
     }
   };
 
-  // 🎲 LOAD RANDOM EXAMPLE
   const loadExample = () => {
-    // Safety Check: Ensure data exists before trying to load it
     if (SAMPLE_DATA && SAMPLE_DATA.length > 0) {
       const random = SAMPLE_DATA[Math.floor(Math.random() * SAMPLE_DATA.length)];
       setInputText(random.text);
@@ -89,9 +129,6 @@ const SmartForm = () => {
         sellingPrice: random.sell,
         productCost: random.cost
       }));
-    } else {
-        console.error("Sample Data is missing or empty!");
-        alert("⚠️ Could not load sample data. Check console.");
     }
   };
 
@@ -157,7 +194,7 @@ const SmartForm = () => {
                 />
             </div>
             <div>
-                <label className="block text-xs text-gray-500">Delivery</label>
+                <label className="block text-xs text-gray-500">Delivery (Auto)</label>
                 <input 
                     type="number" 
                     value={manualData.deliveryCost}
@@ -169,6 +206,7 @@ const SmartForm = () => {
                 <label className="block text-xs text-blue-600 font-bold">Ad Cost (CPR)</label>
                 <input 
                     type="number" 
+                    placeholder="e.g. 50"
                     value={manualData.adCost}
                     onChange={(e) => setManualData({...manualData, adCost: e.target.value})}
                     className="w-full p-2 border border-blue-300 rounded text-blue-700 font-bold bg-white shadow-sm"
@@ -187,4 +225,4 @@ const SmartForm = () => {
   );
 };
 
-export default SmartForm;
+export default SmartForm; 
