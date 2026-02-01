@@ -24,7 +24,7 @@ const Login = () => {
           🚀
         </div>
 
-        <h1 className="text-3xl font-bold text-white mb-2 tracking-wide">Profit Optimizer</h1>
+        <h1 className="text-3xl font-bold text-white mb-2 tracking-wide">MunafaOS</h1>
         <p className="text-blue-100 mb-8 text-sm opacity-90">Secure Access for Business Owners</p>
 
         <button

@@ -1,16 +1,51 @@
-# React + Vite
+# MunafaOS 📊
+**The Intelligent Decision Support System for F-Commerce in Bangladesh**
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MunafaOS (formerly Profit Optimizer) is a specialized web application designed to help Bangladeshi F-commerce entrepreneurs automate order processing, calculate real-time net profit, and manage "Banglish" (Bangla + English) customer data without manual Excel entry.
 
-Currently, two official plugins are available:
+## 🚀 Live Demo
+**[Click here to visit MunafaOS](https://munafa-os.web.app)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## 💡 The Problem
+Small online business owners in Bangladesh suffer from **"Profit Blindness."**
+* **Manual Entry:** Copying messy text from Messenger to Excel takes hours.
+* **Hidden Costs:** They often forget to subtract Delivery (60/120 Tk), Ads, and Packaging from the sale price.
+* **Banglish Chaos:** Customer messages are a mix of Bangla and English (e.g., *"Bhai 017... Mirpur a pathan"*), which standard software cannot read.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## ✅ The Solution: MunafaOS
+MunafaOS acts as a "Bridge" between unstructured chat messages and structured financial data.
 
-## Expanding the ESLint configuration
+### Key Features
+* **🧠 Intelligent Parser:** Automatically detects Name, Phone, and Address from raw "Banglish" text.
+* **📍 Location Intelligence:** Auto-detects neighborhoods (e.g., "Uttara", "Savar") to assign the correct delivery charge (Inside/Outside Dhaka).
+* **💰 Profit Autopsy:** A real-time dashboard showing exactly where money is lost (Ads vs. Delivery vs. Product Cost).
+* **🔒 Security First:** Built with Row-Level Security (RLS) so users own their data. Includes GDPR-compliant "Delete Account" features.
+* **📈 Visual Analytics:** Interactive Pie Charts and Stat Cards to visualize business health.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---
+
+## 🛠️ Tech Stack
+* **Frontend:** React.js (Vite), Tailwind CSS, Recharts
+* **Backend:** Google Firebase (Serverless Functions)
+* **Database:** Cloud Firestore (NoSQL)
+* **Authentication:** Firebase Auth (Google Login)
+
+---
+
+## 👥 Authors & Contributors
+This project was developed as a University Thesis/Final Project.
+
+* **Creator & Lead Developer:** Mong Shainu Marma
+* **Co-Author & Contributor:** Munjur E Fatima Khan Monisha
+
+---
+
+## 📸 Screenshots
+*(You can upload screenshots of your Dashboard here later)*
+
+---
+
+## © Copyright
+**MunafaOS 2026**. All Rights Reserved.
