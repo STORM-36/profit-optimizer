@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase'; 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx'; // Import Excel Tool
+import UnitCostCalculator from './UnitCostCalculator'; // 👈 NEW IMPORT
 
 import { parseText } from '../utils/parser';
 import { SAMPLE_DATA } from '../utils/sampleData';
@@ -28,6 +29,7 @@ const sanitizeNumber = (input) => {
 
 const SmartForm = () => {
   const [inputText, setInputText] = useState('');
+  const [showCalculator, setShowCalculator] = useState(false); // 👈 NEW STATE FOR CALCULATOR
   
   const [manualData, setManualData] = useState({
     name: '',
@@ -91,7 +93,15 @@ const SmartForm = () => {
 
   }, [inputText]);
 
-  // 💾 SAVE ORDER
+  // � NEW: HANDLE APPLY COST FROM CALCULATOR
+  const handleApplyUnitCost = (unitCost) => {
+    setManualData(prev => ({
+      ...prev,
+      productCost: unitCost.toFixed(2)
+    }));
+  };
+
+  // �💾 SAVE ORDER
   const handleSave = async () => {
     if (!auth.currentUser) {
       alert("⚠️ Please Login First!");
@@ -207,12 +217,22 @@ const SmartForm = () => {
             </div>
             <div>
                 <label className="block text-xs text-gray-500">Product Cost</label>
-                <input 
-                    type="number" 
-                    value={manualData.productCost}
-                    onChange={(e) => setManualData({...manualData, productCost: e.target.value})}
-                    className="w-full p-2 border border-red-200 rounded text-red-600 bg-white"
-                />
+                <div className="flex gap-2">
+                  <input 
+                      type="number" 
+                      value={manualData.productCost}
+                      onChange={(e) => setManualData({...manualData, productCost: e.target.value})}
+                      className="flex-1 p-2 border border-red-200 rounded text-red-600 bg-white"
+                  />
+                  {/* 👇 NEW: CALCULATOR BUTTON */}
+                  <button 
+                    onClick={() => setShowCalculator(true)}
+                    title="Calculate unit cost from batch wholesale"
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded font-bold transition"
+                  >
+                    🧮
+                  </button>
+                </div>
             </div>
             <div>
                 <label className="block text-xs text-gray-500">Delivery (Auto)</label>
@@ -242,6 +262,14 @@ const SmartForm = () => {
       >
         💾 Save Order
       </button>
+
+      {/* 👇 NEW: CALCULATOR MODAL */}
+      {showCalculator && (
+        <UnitCostCalculator 
+          onApplyCost={handleApplyUnitCost}
+          onClose={() => setShowCalculator(false)}
+        />
+      )}
     </div>
   );
 };
