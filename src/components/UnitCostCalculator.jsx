@@ -1,5 +1,33 @@
 import React, { useState } from 'react';
 
+const MAX_VALUE = 10000000;
+
+const sanitizeNumericInput = (value) => {
+  if (value === null || value === undefined) return '';
+  const cleaned = String(value).replace(/[^0-9.]/g, '');
+  if (!cleaned) return '';
+
+  const parts = cleaned.split('.');
+  const normalized = parts.length > 1
+    ? `${parts[0] || '0'}.${parts.slice(1).join('')}`
+    : parts[0];
+
+  if (normalized === '.') return '';
+  const num = Number(normalized);
+  if (!Number.isFinite(num)) return '';
+  if (num > MAX_VALUE) return String(MAX_VALUE);
+  if (num < 0) return '0';
+  return normalized;
+};
+
+const toNumber = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  if (num < 0) return 0;
+  if (num > MAX_VALUE) return MAX_VALUE;
+  return num;
+};
+
 const UnitCostCalculator = ({ onApplyCost, onClose }) => {
   const [wholesalePrice, setWholesalePrice] = useState('');
   const [additionalCosts, setAdditionalCosts] = useState('');
@@ -8,9 +36,9 @@ const UnitCostCalculator = ({ onApplyCost, onClose }) => {
 
   // 🧮 CALCULATE UNIT COST
   const handleCalculate = () => {
-    const wholesale = parseFloat(wholesalePrice) || 0;
-    const additional = parseFloat(additionalCosts) || 0;
-    const qty = parseFloat(quantity) || 0;
+    const wholesale = toNumber(wholesalePrice);
+    const additional = toNumber(additionalCosts);
+    const qty = toNumber(quantity);
 
     if (qty <= 0) {
       alert('⚠️ Quantity must be greater than 0');
@@ -18,6 +46,10 @@ const UnitCostCalculator = ({ onApplyCost, onClose }) => {
     }
 
     const unitCost = (wholesale + additional) / qty;
+    if (!Number.isFinite(unitCost) || unitCost < 0 || unitCost > MAX_VALUE) {
+      alert('⚠️ Calculated cost is invalid. Please check your inputs.');
+      return;
+    }
     setCalculatedCost(unitCost);
   };
 
@@ -27,7 +59,12 @@ const UnitCostCalculator = ({ onApplyCost, onClose }) => {
       alert('⚠️ Please calculate the unit cost first');
       return;
     }
-    onApplyCost(calculatedCost);
+    const safeCost = toNumber(calculatedCost);
+    if (safeCost <= 0 || safeCost > MAX_VALUE) {
+      alert('⚠️ Unit cost is invalid. Please recalculate.');
+      return;
+    }
+    onApplyCost(safeCost);
     onClose();
   };
 
@@ -55,10 +92,11 @@ const UnitCostCalculator = ({ onApplyCost, onClose }) => {
               💰 Total Wholesale Purchase Price
             </label>
             <input 
-              type="number" 
+              type="text" 
+              inputMode="decimal"
               placeholder="e.g., 5000"
               value={wholesalePrice}
-              onChange={(e) => setWholesalePrice(e.target.value)}
+              onChange={(e) => setWholesalePrice(sanitizeNumericInput(e.target.value))}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
             />
             <p className="text-xs text-gray-500 mt-1">Total cost of the entire batch</p>
@@ -70,10 +108,11 @@ const UnitCostCalculator = ({ onApplyCost, onClose }) => {
               📦 Additional Batch Costs (Optional)
             </label>
             <input 
-              type="number" 
+              type="text" 
+              inputMode="decimal"
               placeholder="e.g., 500 (Transport, Labor, Packaging)"
               value={additionalCosts}
-              onChange={(e) => setAdditionalCosts(e.target.value)}
+              onChange={(e) => setAdditionalCosts(sanitizeNumericInput(e.target.value))}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
             />
             <p className="text-xs text-gray-500 mt-1">Transport, Labor, Packaging costs for whole batch</p>
@@ -85,10 +124,11 @@ const UnitCostCalculator = ({ onApplyCost, onClose }) => {
               📊 Total Quantity of Items
             </label>
             <input 
-              type="number" 
+              type="text" 
+              inputMode="numeric"
               placeholder="e.g., 50"
               value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
+              onChange={(e) => setQuantity(sanitizeNumericInput(e.target.value))}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
             />
             <p className="text-xs text-gray-500 mt-1">How many units in this batch?</p>

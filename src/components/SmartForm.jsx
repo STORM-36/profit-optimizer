@@ -95,9 +95,14 @@ const SmartForm = () => {
 
   // � NEW: HANDLE APPLY COST FROM CALCULATOR
   const handleApplyUnitCost = (unitCost) => {
+    const safeCost = sanitizeNumber(unitCost);
+    if (safeCost <= 0) {
+      alert('⚠️ Unit cost is invalid. Please recalculate.');
+      return;
+    }
     setManualData(prev => ({
       ...prev,
-      productCost: unitCost.toFixed(2)
+      productCost: safeCost.toFixed(2)
     }));
   };
 
@@ -217,18 +222,18 @@ const SmartForm = () => {
             </div>
             <div>
                 <label className="block text-xs text-gray-500">Product Cost</label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap md:flex-nowrap">
                   <input 
                       type="number" 
                       value={manualData.productCost}
                       onChange={(e) => setManualData({...manualData, productCost: e.target.value})}
-                      className="flex-1 p-2 border border-red-200 rounded text-red-600 bg-white"
+                      className="flex-1 min-w-[120px] p-2 border border-red-200 rounded text-red-600 bg-white text-sm"
                   />
                   {/* 👇 NEW: CALCULATOR BUTTON */}
                   <button 
                     onClick={() => setShowCalculator(true)}
                     title="Calculate unit cost from batch wholesale"
-                    className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded font-bold transition"
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-2 py-2 md:px-3 rounded font-bold transition text-lg md:text-base flex-shrink-0"
                   >
                     🧮
                   </button>
