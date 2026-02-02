@@ -3,11 +3,13 @@ import { db, auth } from '../firebase';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import Dashboard from './Dashboard'; // 👈 NEW: Import the Charts!
+import Receipt from './Receipt'; // 👈 Import Receipt
 
 const OrderList = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null); 
+  const [receiptOrder, setReceiptOrder] = useState(null); // 👈 For receipt modal
   const user = auth.currentUser;
 
   // 1. 🔄 FETCH DATA
@@ -174,6 +176,14 @@ const OrderList = () => {
                         >
                           🔍
                         </button>
+                        {/* RECEIPT BUTTON */}
+                        <button 
+                          onClick={() => setReceiptOrder(order)} 
+                          className="bg-purple-100 text-purple-700 px-3 py-1 rounded text-xs font-bold hover:bg-purple-200"
+                          title="Print/Download Receipt"
+                        >
+                          🧾
+                        </button>
                         {/* DELETE BUTTON */}
                         <button 
                           onClick={() => handleDelete(order.id)} 
@@ -188,6 +198,36 @@ const OrderList = () => {
               </tbody>
             </table>
           </div>
+
+          {/* RECEIPT MODAL */}
+          {receiptOrder && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl overflow-hidden animate-bounce-in relative">
+                <button 
+                  onClick={() => setReceiptOrder(null)} 
+                  className="absolute top-2 right-2 z-10 bg-red-500 text-white w-8 h-8 rounded-full hover:bg-red-600 font-bold"
+                >
+                  ✕
+                </button>
+                <Receipt order={{
+                  id: receiptOrder.id,
+                  customerName: receiptOrder.name,
+                  phone: receiptOrder.phone,
+                  address: receiptOrder.address,
+                  items: [{
+                    name: 'Product',
+                    price: parseFloat(receiptOrder.productCost) || 0
+                  }],
+                  sellingPrice: parseFloat(receiptOrder.sellingPrice) || 0,
+                  totalPrice: parseFloat(receiptOrder.sellingPrice) || 0,
+                  date: receiptOrder.timestamp?.toDate().toLocaleDateString('en-GB') || new Date().toLocaleDateString('en-GB'),
+                  deliveryCost: receiptOrder.deliveryCost,
+                  adCost: receiptOrder.adCost,
+                  netProfit: getStableProfit(receiptOrder).trueProfit
+                }} />
+              </div>
+            </div>
+          )}
 
           {/* POPUP MODAL (AUTOPSY) */}
           {selectedOrder && (

@@ -5,6 +5,18 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    chunkSizeWarningLimit: 1000, // 👈 Tells Vite: "Don't warn me unless it's huge (1MB)"
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split Firebase into its own chunk (it's large)
+          'firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          // Split charts library into its own chunk
+          'charts': ['recharts'],
+          // Vendor chunk for other large libraries
+          'vendor': ['html2canvas', 'jspdf']
+        }
+      }
+    }
   },
 })

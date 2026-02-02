@@ -4,7 +4,27 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx'; // Import Excel Tool
 
 import { parseText } from '../utils/parser';
-import { SAMPLE_DATA } from '../utils/sampleData'; 
+import { SAMPLE_DATA } from '../utils/sampleData';
+
+// 🛡️ INPUT SANITIZATION - Prevents XSS and injection attacks
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return input;
+  
+  // Remove potential XSS characters and trim whitespace
+  return input
+    .trim()
+    .replace(/[<>"'`]/g, '') // Remove HTML/script tags
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+=/gi, '') // Remove event handlers like onclick=
+    .substring(0, 500); // Limit length to prevent huge data
+};
+
+const sanitizeNumber = (input) => {
+  const num = parseFloat(input);
+  if (isNaN(num) || num < 0) return 0;
+  if (num > 1000000) return 1000000; // Cap at 1 million
+  return num;
+}; 
 
 const SmartForm = () => {
   const [inputText, setInputText] = useState('');
@@ -92,17 +112,18 @@ const SmartForm = () => {
     const netProfit = selling - totalCost;
 
     try {
+      // 🛡️ SANITIZE ALL INPUTS BEFORE SAVING
       await addDoc(collection(db, "orders"), {
         userId: auth.currentUser.uid,
-        originalText: inputText,
-        name: manualData.name,
-        phone: manualData.phone,
-        address: manualData.address,
-        sellingPrice: selling,
-        productCost: product || 0,
-        deliveryCost: delivery || 0,
-        adCost: ads || 0,
-        netProfit: netProfit, // We save the profit now!
+        originalText: sanitizeInput(inputText),
+        name: sanitizeInput(manualData.name),
+        phone: sanitizeInput(manualData.phone),
+        address: sanitizeInput(manualData.address),
+        sellingPrice: sanitizeNumber(selling),
+        productCost: sanitizeNumber(product || 0),
+        deliveryCost: sanitizeNumber(delivery || 0),
+        adCost: sanitizeNumber(ads || 0),
+        netProfit: netProfit,
         timestamp: serverTimestamp()
       });
 

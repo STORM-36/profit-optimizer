@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AuthForm from './components/AuthForm';
 import SmartForm from './components/SmartForm';
 import OrderList from './components/OrderList';
-import Settings from './components/Settings'; // Import the new page
+// Lazy load components
+const Settings = lazy(() => import('./components/Settings'));
+import { validateThirdPartyLibraries } from './utils/validateLibraries'; // Validate libraries on startup
+
+// Loading component while components load
+const LoadingComponent = () => (
+  <div className="flex items-center justify-center p-10">
+    <p className="text-gray-500">⏳ Loading...</p>
+  </div>
+);
 
 function App() {
   const [user, setUser] = useState(null);
@@ -14,6 +23,10 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
+    
+    // Validate all third-party libraries on app startup
+    validateThirdPartyLibraries();
+    
     return () => unsubscribe();
   }, []);
 
@@ -71,7 +84,9 @@ function App() {
             <OrderList />
           </>
         ) : (
-          <Settings goBack={() => setCurrentView('dashboard')} />
+          <Suspense fallback={<LoadingComponent />}>
+            <Settings goBack={() => setCurrentView('dashboard')} />
+          </Suspense>
         )}
       </div>
 

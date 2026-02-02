@@ -19,3 +19,16 @@ export const SAMPLE_DATA = [
       sell: 1500, cost: 900
     }
 ];
+
+const sampleOrder = {
+    customerName: 'John Doe',
+    items: [
+        { name: 'Item 1', price: 5.99 },
+        { name: 'Item 2', price: 3.49 },
+        { name: 'Item 3', price: 2.99 },
+    ],
+    totalPrice: 12.47,
+    date: '2026-02-02',
+};
+
+export default sampleOrder;

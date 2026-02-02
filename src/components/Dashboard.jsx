@@ -1,5 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import Receipt from './Receipt';
 
 const Dashboard = ({ orders }) => {
   // 1. CALCULATE TOTALS
@@ -31,6 +32,13 @@ const Dashboard = ({ orders }) => {
     { name: 'Packaging', value: totalPackagingCost, color: '#999' }, // Gray
     { name: 'Net Profit', value: netProfit > 0 ? netProfit : 0, color: '#00C49F' } // Green
   ];
+
+  const [selectedOrder, setSelectedOrder] = React.useState(null);
+
+  const handleSaveOrder = (order) => {
+    // Logic to save the order
+    setSelectedOrder(order); // Set the saved order to display receipt
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 animate-fade-in">
@@ -87,6 +95,8 @@ const Dashboard = ({ orders }) => {
         </div>
       </div>
 
+      {selectedOrder && <Receipt order={selectedOrder} />}
+      <button onClick={() => handleSaveOrder(savedOrder)}>Save Order</button>
     </div>
   );
 };

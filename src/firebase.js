@@ -3,14 +3,14 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
-// ✅ YOUR REAL KEYS FROM THE SCREENSHOT
+// 🔒 SECURE: Load config from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyD6ZsXiud8e6xq5-GvMMo-DUjxh6cS_F0A",
-  authDomain: "profit-optimizer-v1.firebaseapp.com",
-  projectId: "profit-optimizer-v1",
-  storageBucket: "profit-optimizer-v1.firebasestorage.app",
-  messagingSenderId: "1025711639266",
-  appId: "1:1025711639266:web:7e86bb89a86ee7ec426cbb"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
