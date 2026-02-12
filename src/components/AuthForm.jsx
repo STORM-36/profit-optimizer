@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { auth } from '../firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
 
 const AuthForm = () => {
   const [isLogin, setIsLogin] = useState(true); // true = Login Mode, false = Signup Mode
@@ -36,7 +36,14 @@ const AuthForm = () => {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (err) {
-      setError(err.message);
+      // If popup is blocked, use redirect instead
+      if (err.code === 'auth/popup-blocked') {
+        console.log('Popup blocked, using redirect method...');
+        const provider = new GoogleAuthProvider();
+        await signInWithRedirect(auth, provider);
+      } else {
+        setError(err.message);
+      }
     }
   };
 
