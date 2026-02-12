@@ -1,6 +1,5 @@
 import React from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import Receipt from './Receipt';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const Dashboard = ({ orders }) => {
   // 1. CALCULATE TOTALS
@@ -13,7 +12,11 @@ const Dashboard = ({ orders }) => {
   let totalPackagingCost = 0;
 
   orders.forEach(order => {
-    totalRevenue += parseFloat(order.sellingPrice) || 0;
+    const selling = parseFloat(order.sellingPrice) || 0;
+    const discount = parseFloat(order.discountPrice) || 0;
+    const effectiveSelling = discount > 0 ? discount : selling;
+
+    totalRevenue += effectiveSelling;
     totalProductCost += parseFloat(order.productCost) || 0;
     totalDeliveryCost += parseFloat(order.deliveryCost) || 0;
     totalAdCost += parseFloat(order.adCost) || 0;
@@ -32,13 +35,6 @@ const Dashboard = ({ orders }) => {
     { name: 'Packaging', value: totalPackagingCost, color: '#999' }, // Gray
     { name: 'Net Profit', value: netProfit > 0 ? netProfit : 0, color: '#00C49F' } // Green
   ];
-
-  const [selectedOrder, setSelectedOrder] = React.useState(null);
-
-  const handleSaveOrder = (order) => {
-    // Logic to save the order
-    setSelectedOrder(order); // Set the saved order to display receipt
-  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 animate-fade-in">
@@ -95,8 +91,6 @@ const Dashboard = ({ orders }) => {
         </div>
       </div>
 
-      {selectedOrder && <Receipt order={selectedOrder} />}
-      <button onClick={() => handleSaveOrder(savedOrder)}>Save Order</button>
     </div>
   );
 };

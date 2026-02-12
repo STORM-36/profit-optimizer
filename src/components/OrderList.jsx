@@ -49,13 +49,15 @@ const OrderList = () => {
   // 4. 💰 PROFIT CALCULATION ENGINE
   const getStableProfit = (order) => {
     const selling = parseFloat(order.sellingPrice) || 0;
+    const discount = parseFloat(order.discountPrice) || 0;
+    const effectiveSelling = discount > 0 ? discount : selling;
     const cost = parseFloat(order.productCost) || 0;
     const delivery = parseFloat(order.deliveryCost) || 0;
     const ads = parseFloat(order.adCost) || 0;
-    const packaging = 15; // Hidden cost
+    const packaging = 15;
 
     const totalSpent = cost + delivery + ads + packaging;
-    const trueProfit = selling - totalSpent;
+    const trueProfit = effectiveSelling - totalSpent;
     
     return { trueProfit, totalSpent, ads };
   };
@@ -73,13 +75,21 @@ const OrderList = () => {
 
     const excelData = orders.map(order => {
       const { trueProfit } = getStableProfit(order);
+      const selling = parseFloat(order.sellingPrice) || 0;
+      const discount = parseFloat(order.discountPrice) || 0;
+      const effectiveSelling = discount > 0 ? discount : selling;
       return {
         Date: order.timestamp?.toDate().toLocaleDateString('en-GB') || "N/A",
         Customer: order.name,
         Phone: order.phone,
         Address: order.address,
+        Category: order.category || "",
+        Subcategory: order.subcategory || "",
+        SKU: order.sku || "",
         Status: order.status || "Pending",
-        "Selling Price": order.sellingPrice || 0,
+        "Selling Price": selling,
+        "Discount Price": discount,
+        "Effective Selling": effectiveSelling,
         "Product Cost": order.productCost || 0,
         "Delivery Cost": order.deliveryCost || 0,
         "Ad Cost": order.adCost || 0,
@@ -93,7 +103,21 @@ const OrderList = () => {
     XLSX.writeFile(workbook, "Profit_Optimizer_Report.xlsx");
   };
 
-  if (loading) return <div className="text-center p-10 text-gray-500">⏳ Loading Data...</div>;
+  if (loading) {
+    return (
+      <div className="text-center p-10 text-gray-500">
+        <p className="text-xl">⏳ Loading Orders...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="text-center p-10 text-yellow-600 bg-yellow-50 rounded-lg">
+        <p>📍 Please login to see orders</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-10 w-full relative">
@@ -215,10 +239,16 @@ const OrderList = () => {
                   phone: receiptOrder.phone,
                   address: receiptOrder.address,
                   items: [{
-                    name: 'Product',
+                    name: receiptOrder.category
+                      ? `${receiptOrder.category}${receiptOrder.subcategory ? ` • ${receiptOrder.subcategory}` : ''}`
+                      : 'Product',
                     price: parseFloat(receiptOrder.productCost) || 0
                   }],
                   sellingPrice: parseFloat(receiptOrder.sellingPrice) || 0,
+                  discountPrice: parseFloat(receiptOrder.discountPrice) || 0,
+                  category: receiptOrder.category || "",
+                  subcategory: receiptOrder.subcategory || "",
+                  sku: receiptOrder.sku || "",
                   totalPrice: parseFloat(receiptOrder.sellingPrice) || 0,
                   date: receiptOrder.timestamp?.toDate().toLocaleDateString('en-GB') || new Date().toLocaleDateString('en-GB'),
                   deliveryCost: receiptOrder.deliveryCost,
@@ -250,6 +280,12 @@ const OrderList = () => {
                       <span className="text-gray-600">Selling Price</span>
                       <span className="font-bold">{selectedOrder.sellingPrice || 0} Tk</span>
                     </div>
+                    {parseFloat(selectedOrder.discountPrice) > 0 && (
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="text-gray-600">Discount Price</span>
+                        <span className="font-bold">{selectedOrder.discountPrice} Tk</span>
+                      </div>
+                    )}
                     <div className="bg-slate-50 p-3 rounded-lg space-y-2">
                       <div className="flex justify-between text-red-500">
                         <span>📦 Product Cost</span>

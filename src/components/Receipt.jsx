@@ -98,6 +98,13 @@ const Receipt = ({ order }) => {
                 <p className="font-semibold text-gray-700">Customer: <span className="font-normal">{order.customerName}</span></p>
                 <p className="text-sm text-gray-600">Phone: {order.phone}</p>
                 <p className="text-sm text-gray-600">Address: {order.address}</p>
+                {(order.category || order.subcategory || order.sku) && (
+                    <div className="mt-2 text-xs text-gray-500">
+                        {order.category && <div>Category: {order.category}</div>}
+                        {order.subcategory && <div>Subcategory: {order.subcategory}</div>}
+                        {order.sku && <div>SKU: {order.sku}</div>}
+                    </div>
+                )}
             </div>
             
             <div className="mb-4 pb-4 border-b border-gray-200">
@@ -115,6 +122,12 @@ const Receipt = ({ order }) => {
                     <span className="text-gray-600">Selling Price:</span>
                     <span className="font-semibold">{order.sellingPrice?.toFixed(2) || order.totalPrice?.toFixed(2)} Tk</span>
                 </div>
+                {order.discountPrice > 0 && (
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Discount Price:</span>
+                        <span className="font-semibold">{order.discountPrice.toFixed(2)} Tk</span>
+                    </div>
+                )}
                 <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Delivery Cost:</span>
                     <span className="font-semibold">{order.deliveryCost} Tk</span>
