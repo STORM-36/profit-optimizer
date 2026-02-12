@@ -6,6 +6,7 @@ import UnitCostCalculator from './UnitCostCalculator'; // 👈 NEW IMPORT
 
 import { parseText } from '../utils/parser';
 import { SAMPLE_DATA } from '../utils/sampleData';
+import { CATEGORY_OPTIONS } from '../utils/categories';
 
 // 🛡️ INPUT SANITIZATION - Prevents XSS and injection attacks
 const sanitizeInput = (input) => {
@@ -27,6 +28,15 @@ const sanitizeNumber = (input) => {
   return num;
 }; 
 
+const normalizeCategory = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Other';
+  const match = CATEGORY_OPTIONS.find(
+    (option) => option.toLowerCase() === raw.toLowerCase()
+  );
+  return match || 'Other';
+};
+
 const SmartForm = () => {
   const [inputText, setInputText] = useState('');
   const [showCalculator, setShowCalculator] = useState(false); // 👈 NEW STATE FOR CALCULATOR
@@ -38,7 +48,14 @@ const SmartForm = () => {
     sellingPrice: '', 
     productCost: '',
     deliveryCost: 120, // Default to outside Dhaka initially
-    adCost: ''         // FIXED: Now starts blank
+    adCost: '',        // FIXED: Now starts blank
+    category: '',
+    subcategory: '',
+    sku: '',
+    discountPrice: '',
+
+    addedBy: '',
+    userPhone: ''
   });
 
 // ⚡ SMART DETECTION LOGIC
@@ -116,6 +133,10 @@ const SmartForm = () => {
     const product = parseFloat(manualData.productCost);
     const delivery = parseFloat(manualData.deliveryCost);
     const ads = parseFloat(manualData.adCost);
+    const discount = parseFloat(manualData.discountPrice);
+    const safeCategory = normalizeCategory(manualData.category);
+    const addedByFallback = auth.currentUser?.displayName || auth.currentUser?.email || '';
+    const safeAddedBy = sanitizeInput(manualData.addedBy || addedByFallback || '');
 
     if (!selling || selling <= 0) {
       alert("⚠️ Stop! You must enter a Selling Price.");
@@ -138,6 +159,12 @@ const SmartForm = () => {
         productCost: sanitizeNumber(product || 0),
         deliveryCost: sanitizeNumber(delivery || 0),
         adCost: sanitizeNumber(ads || 0),
+        discountPrice: sanitizeNumber(discount || 0),
+        category: sanitizeInput(safeCategory),
+        subcategory: sanitizeInput(manualData.subcategory),
+        sku: sanitizeInput(manualData.sku),
+        addedBy: safeAddedBy,
+        userPhone: sanitizeInput(manualData.userPhone),
         netProfit: netProfit,
         timestamp: serverTimestamp()
       });
@@ -147,7 +174,10 @@ const SmartForm = () => {
       setManualData({
         name: '', phone: '', address: '',
         sellingPrice: '', productCost: '',
-        deliveryCost: 120, adCost: '' 
+        deliveryCost: 120, adCost: '',
+        category: '', subcategory: '', sku: '',
+        discountPrice: '',
+        addedBy: '', userPhone: ''
       });
       alert("✅ Order Saved!");
     } catch (error) {
@@ -207,6 +237,48 @@ const SmartForm = () => {
         className="w-full p-2 border rounded mt-3 text-sm text-gray-600"
       />
 
+      {/* PRODUCT INFO */}
+      <div className="bg-slate-50 p-4 rounded-xl mt-4 border border-slate-200">
+        <h3 className="text-xs font-bold text-slate-700 uppercase mb-2">📦 Product Info</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500">Category</label>
+            <input
+              list="order-category-options"
+              value={manualData.category}
+              onChange={(e) => setManualData({ ...manualData, category: e.target.value })}
+              className="w-full p-2 border rounded font-bold text-gray-700"
+              placeholder="Select or type a category"
+            />
+            <datalist id="order-category-options">
+              {CATEGORY_OPTIONS.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500">Subcategory</label>
+            <input
+              type="text"
+              value={manualData.subcategory}
+              onChange={(e) => setManualData({ ...manualData, subcategory: e.target.value })}
+              className="w-full p-2 border rounded font-bold text-gray-700"
+              placeholder="e.g. Sneakers"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500">SKU</label>
+            <input
+              type="text"
+              value={manualData.sku}
+              onChange={(e) => setManualData({ ...manualData, sku: e.target.value })}
+              className="w-full p-2 border rounded font-bold text-gray-700"
+              placeholder="SKU-123"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* UNIT ECONOMICS */}
       <div className="bg-blue-50 p-4 rounded-xl mt-4 border border-blue-100">
         <h3 className="text-xs font-bold text-blue-800 uppercase mb-2">💰 Unit Economics</h3>
@@ -258,6 +330,42 @@ const SmartForm = () => {
                     className="w-full p-2 border border-blue-300 rounded text-blue-700 font-bold bg-white shadow-sm"
                 />
             </div>
+            <div>
+                <label className="block text-xs text-gray-500">Discount Price</label>
+                <input 
+                    type="number" 
+                    value={manualData.discountPrice}
+                    onChange={(e) => setManualData({...manualData, discountPrice: e.target.value})}
+                    className="w-full p-2 border border-green-200 rounded font-bold text-green-700 bg-white"
+                />
+            </div>
+        </div>
+      </div>
+
+      {/* USER INFO */}
+      <div className="bg-indigo-50 p-4 rounded-xl mt-4 border border-indigo-100">
+        <h3 className="text-xs font-bold text-indigo-700 uppercase mb-2">👤 User Info</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500">Added By</label>
+            <input
+              type="text"
+              value={manualData.addedBy}
+              onChange={(e) => setManualData({ ...manualData, addedBy: e.target.value })}
+              className="w-full p-2 border rounded font-bold text-gray-700"
+              placeholder="Auto-filled on save"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500">User Phone</label>
+            <input
+              type="text"
+              value={manualData.userPhone}
+              onChange={(e) => setManualData({ ...manualData, userPhone: e.target.value })}
+              className="w-full p-2 border rounded font-bold text-gray-700"
+              placeholder="Your phone"
+            />
+          </div>
         </div>
       </div>
 
