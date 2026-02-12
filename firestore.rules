@@ -22,6 +22,20 @@ service cloud.firestore {
       allow delete: if request.auth != null && 
                        resource.data.userId == request.auth.uid;
     }
+
+    // ============================================
+    // INVENTORY COLLECTION
+    // ============================================
+    match /inventory/{inventoryId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      allow create: if request.auth != null &&
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.timestamp != null;
+
+      allow update, delete: if request.auth != null &&
+                              resource.data.userId == request.auth.uid;
+    }
     
     // ============================================
     // CATCH-ALL (Deny everything else)
