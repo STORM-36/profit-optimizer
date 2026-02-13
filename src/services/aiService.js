@@ -213,6 +213,235 @@ export const parseProductWithAI = async (rawText) => {
 };
 
 /**
+ * Extract multiple products from a single messy text (Bulk Import)
+ * @param {string} rawText - Long supplier message with multiple products
+ * @returns {Array} - Array of products [{name, price, quantity, color, category}, ...]
+ */
+export const parseMultipleProductsWithAI = async (rawText) => {
+  const normalizedText = String(rawText || "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const trimmedText = normalizedText.length > 2000
+    ? normalizedText.slice(0, 2000)
+    : normalizedText;
+
+  if (normalizedText.length > 2000) {
+    console.warn("⚠️ Bulk import input trimmed to 2000 chars for reliability.");
+  }
+
+  console.log("📦 Bulk Import Service Called with input:", trimmedText);
+  
+  // Check API key
+  if (!API_KEY) {
+    console.error("❌ Cannot proceed - API key is missing");
+    alert("⚠️ Gemini API Key is not configured. Add VITE_GEMINI_API_KEY to your .env file.");
+    return [];
+  }
+
+  try {
+    let selectedModel = MODEL_PRIMARY;
+    try {
+      console.log("🔎 Checking available Gemini models for bulk import...");
+      const models = await listAvailableModels();
+      const discovered = pickModelName(models);
+      if (discovered) {
+        selectedModel = discovered;
+      }
+    } catch (listError) {
+      console.warn("⚠️ Could not list models, using default.", listError);
+    }
+
+    console.log(`⚙️ Initializing Gemini model for bulk import: ${selectedModel}...`);
+    
+    const model = genAI.getGenerativeModel({ model: selectedModel });
+
+    const prompt = `
+      You are a smart inventory assistant for a Bangladeshi e-commerce shop.
+      Extract ALL products from this supplier message: "${trimmedText}".
+      
+      IMPORTANT CONTEXT:
+      - This message contains MULTIPLE products (could be 2-20 items).
+      - The text may be long, chatty, and contain greetings or filler.
+      - Text may be in "Banglish" (Bengali written with English letters).
+      - Common Bangladeshi terms: "tk" = Taka (currency), "pcs/piece/ta" = pieces/quantity
+      - Example: "lal shirt 50 ta 500tk, nil shirt 30 ta 450tk" = 2 products
+      
+      EXTRACTION RULES:
+      - Extract EVERY product mentioned in the text.
+      - For each product, capture:
+        * Product Name: Extract the item name (e.g., "T-shirt", "Jacket", "Phone")
+        * Price: Look for numbers with 'tk', 'taka', 'price', 'dam' (per unit price)
+        * Quantity: Look for numbers with 'pcs', 'piece', 'ta', 'guti', 'qty', 'items'
+        * Color: Extract if mentioned (e.g., "red", "lal", "blue", "nil")
+        * Category: Choose from these categories only:
+          Clothing, Electronics, Home, Beauty, Grocery, Accessories, Kids, Sports,
+          Stationery, Health, Footwear, Bags, Kitchen, Tools, Mobile, Other
+      
+      CRITICAL FORMATTING:
+      - Return ONLY a valid JSON Array [].
+      - Each product must be a separate object in the array.
+      - No markdown, no explanations, no extra text outside the array.
+      - If you can't extract a field, use null for that field.
+      - If no products found, return empty array [].
+      
+      Required JSON Format (MUST BE AN ARRAY):
+      [
+        {
+          "name": "Product Name 1",
+          "price": Number,
+          "quantity": Number,
+          "color": "String or null",
+          "category": "String or null"
+        },
+        {
+          "name": "Product Name 2",
+          "price": Number,
+          "quantity": Number,
+          "color": "String or null",
+          "category": "String or null"
+        }
+      ]
+      
+      IMPORTANT: The response MUST start with [ and end with ]. Nothing before or after the array.
+    `;
+
+    console.log("📤 Sending bulk import request to Gemini API...");
+    
+    let result = await model.generateContent(prompt);
+    console.log("📥 Bulk import response received:", result);
+    
+    const response = await result.response;
+    const text = response.text();
+    console.log("📝 Response text:", text);
+
+    // Clean the response - handle both ```json and ``` markers, and array markers
+    let cleanText = text.replace(/```json|```/g, "").trim();
+    
+    // Ensure we have array brackets
+    if (!cleanText.startsWith('[')) {
+      // Try to find array start
+      const arrayStart = cleanText.indexOf('[');
+      if (arrayStart !== -1) {
+        cleanText = cleanText.substring(arrayStart);
+      }
+    }
+    if (!cleanText.endsWith(']')) {
+      // Try to find array end
+      const arrayEnd = cleanText.lastIndexOf(']');
+      if (arrayEnd !== -1) {
+        cleanText = cleanText.substring(0, arrayEnd + 1);
+      }
+    }
+    
+    console.log("🧹 Cleaned text:", cleanText);
+
+    // Parse the array
+    const parsedData = JSON.parse(cleanText);
+    
+    // Validate it's an array
+    if (!Array.isArray(parsedData)) {
+      console.error("❌ Expected array, got:", typeof parsedData);
+      alert("⚠️ AI returned invalid format (not an array). Try again.");
+      return [];
+    }
+    
+    console.log(`✅ Successfully parsed ${parsedData.length} products:`, parsedData);
+    
+    return parsedData;
+
+  } catch (error) {
+    const message = String(error?.message || "");
+    
+    // Try fallback model
+    if (message.includes("not found") || message.includes("not supported")) {
+      console.warn(`Model not found. Retrying bulk import with fallback: ${MODEL_FALLBACK}`);
+      try {
+        const fallbackModel = genAI.getGenerativeModel({ model: MODEL_FALLBACK });
+        const fallbackResult = await fallbackModel.generateContent(prompt);
+        const fallbackResponse = await fallbackResult.response;
+        const fallbackText = fallbackResponse.text();
+        let fallbackCleanText = fallbackText.replace(/```json|```/g, "").trim();
+        
+        // Ensure array brackets
+        if (!fallbackCleanText.startsWith('[')) {
+          const arrayStart = fallbackCleanText.indexOf('[');
+          if (arrayStart !== -1) fallbackCleanText = fallbackCleanText.substring(arrayStart);
+        }
+        if (!fallbackCleanText.endsWith(']')) {
+          const arrayEnd = fallbackCleanText.lastIndexOf(']');
+          if (arrayEnd !== -1) fallbackCleanText = fallbackCleanText.substring(0, arrayEnd + 1);
+        }
+        
+        const fallbackParsed = JSON.parse(fallbackCleanText);
+        
+        if (Array.isArray(fallbackParsed)) {
+          console.log(`✅ Parsed ${fallbackParsed.length} products from fallback model:`, fallbackParsed);
+          return fallbackParsed;
+        }
+      } catch (fallbackError) {
+        console.error("Fallback model error:", fallbackError);
+      }
+
+      // Try model discovery
+      try {
+        console.warn("Attempting bulk import model discovery via listModels...");
+        const models = await listAvailableModels();
+        const discovered = pickModelName(models);
+        if (discovered) {
+          console.log(`✅ Discovered supported model: ${discovered}`);
+          const discoveredModel = genAI.getGenerativeModel({ model: discovered });
+          const discoveredResult = await discoveredModel.generateContent(prompt);
+          const discoveredResponse = await discoveredResult.response;
+          const discoveredText = discoveredResponse.text();
+          let discoveredCleanText = discoveredText.replace(/```json|```/g, "").trim();
+          
+          // Ensure array brackets
+          if (!discoveredCleanText.startsWith('[')) {
+            const arrayStart = discoveredCleanText.indexOf('[');
+            if (arrayStart !== -1) discoveredCleanText = discoveredCleanText.substring(arrayStart);
+          }
+          if (!discoveredCleanText.endsWith(']')) {
+            const arrayEnd = discoveredCleanText.lastIndexOf(']');
+            if (arrayEnd !== -1) discoveredCleanText = discoveredCleanText.substring(0, arrayEnd + 1);
+          }
+          
+          const discoveredParsed = JSON.parse(discoveredCleanText);
+          
+          if (Array.isArray(discoveredParsed)) {
+            console.log(`✅ Parsed ${discoveredParsed.length} products from discovered model:`, discoveredParsed);
+            return discoveredParsed;
+          }
+        }
+      } catch (discoveryError) {
+        console.error("Model discovery failed:", discoveryError);
+      }
+    }
+    
+    console.error("❌ Bulk Import Error Details:");
+    console.error("Error Type:", error.constructor.name);
+    console.error("Error Message:", error.message);
+    console.error("Full Error:", error);
+    
+    // Specific error messages
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("API key not valid")) {
+      alert("⚠️ Invalid Gemini API Key!\n\nCheck your .env file.");
+    } else if (error.message?.includes("billing") || error.message?.includes("quota")) {
+      alert("⚠️ Gemini API needs billing enabled in Google Cloud Console.");
+    } else if (error.message?.includes("JSON")) {
+      alert("⚠️ AI returned invalid format for bulk import. Try simpler text or fewer products.");
+      console.error("The AI response couldn't be parsed as JSON array.");
+    } else if (error.message?.includes("Failed to fetch") || error.message?.includes("NetworkError")) {
+      alert("⚠️ Cannot reach Gemini API. Check your internet connection.");
+    } else {
+      alert("⚠️ Bulk Import Error: " + error.message + "\n\nCheck browser console (F12) for details.");
+    }
+    
+    return []; // Return empty array on failure
+  }
+};
+
+/**
  * Extract product details from an image using Gemini Vision API
  * @param {File|string} imageInput - Image file or base64 string
  * @returns {object} - Structured data { name, price, quantity, color, category }
