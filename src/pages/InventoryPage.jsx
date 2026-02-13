@@ -1,5 +1,6 @@
 import React from "react";
 import AddInventory from "../components/AddInventory";
+import InventoryList from "../components/InventoryList";
 
 const InventoryPage = () => (
   <div className="space-y-6">
@@ -8,6 +9,7 @@ const InventoryPage = () => (
       <p className="text-xs text-gray-400">Add and manage your stock with AI assistance.</p>
     </div>
     <AddInventory />
+    <InventoryList />
   </div>
 );
 
