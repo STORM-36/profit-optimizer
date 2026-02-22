@@ -44,11 +44,7 @@ function App() {
   }, [currentView]);
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <AuthForm />
-      </div>
-    );
+    return <AuthForm />;
   }
 
   return (

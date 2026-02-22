@@ -1,23 +1,51 @@
 /* src/components/InventoryList.jsx */
 import React, { useState, useEffect, useMemo } from "react";
 import { db, auth } from "../firebase";
-import { collection, onSnapshot, query, where, orderBy, deleteDoc, doc, limit, getCountFromServer } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  deleteDoc,
+  doc,
+  limit,
+  getCountFromServer,
+  getDocs,
+  startAfter
+} from "firebase/firestore";
 import { CATEGORY_OPTIONS } from "../utils/categories";
+
+const PAGE_SIZE = 50;
+
+const InventorySkeleton = () => (
+  <div className="space-y-3 animate-pulse" role="status" aria-label="Loading inventory">
+    {Array.from({ length: 6 }).map((_, index) => (
+      <div key={index} className="h-12 rounded-lg bg-slate-100 border border-slate-200" />
+    ))}
+  </div>
+);
 
 const InventoryList = () => {
   const [inventory, setInventory] = useState([]);
-  const [filteredInventory, setFilteredInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
-  const [fetchLimit, setFetchLimit] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [initialFetchError, setInitialFetchError] = useState("");
+  const [loadMoreError, setLoadMoreError] = useState("");
+  const [hasTriedLoadMore, setHasTriedLoadMore] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
-  // Fetch server-side total count on mount
+  const userId = auth.currentUser?.uid;
+
+  // Fetch server-side total count
   useEffect(() => {
-    if (!auth.currentUser) {
-      setLoading(false);
+    if (!userId) {
+      setTotalCount(0);
       return;
     }
 
@@ -25,7 +53,7 @@ const InventoryList = () => {
       try {
         const countQuery = query(
           collection(db, "inventory"),
-          where("userId", "==", auth.currentUser.uid)
+          where("userId", "==", userId)
         );
         const snapshot = await getCountFromServer(countQuery);
         setTotalCount(snapshot.data().count);
@@ -36,40 +64,128 @@ const InventoryList = () => {
     };
 
     fetchTotalCount();
-  }, []);
+  }, [userId]);
 
-  // Fetch inventory from Firebase with dynamic limit
-  useEffect(() => {
-    if (!auth.currentUser) {
+  const fetchPage = async (isInitialLoad = false) => {
+    if (!userId) {
       setLoading(false);
       return;
     }
 
-    const q = query(
+    if (!isInitialLoad) {
+      if (isLoadingMore || !hasMore) return;
+      setIsLoadingMore(true);
+      setLoadMoreError("");
+    }
+
+    try {
+      const constraints = [
+        where("userId", "==", userId),
+        orderBy("timestamp", "desc"),
+        limit(PAGE_SIZE)
+      ];
+
+      if (!isInitialLoad && lastVisibleDoc) {
+        constraints.push(startAfter(lastVisibleDoc));
+      }
+
+      const snapshot = await getDocs(query(collection(db, "inventory"), ...constraints));
+      const newItems = snapshot.docs.map((snapshotDoc) => ({
+        id: snapshotDoc.id,
+        ...snapshotDoc.data()
+      }));
+
+      setInventory((prev) => {
+        if (isInitialLoad) return newItems;
+
+        const existingIds = new Set(prev.map((item) => item.id));
+        const uniqueNew = newItems.filter((item) => !existingIds.has(item.id));
+        return [...prev, ...uniqueNew];
+      });
+
+      const newLastVisibleDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+      setLastVisibleDoc(newLastVisibleDoc);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      setLoadMoreError("");
+    } catch (error) {
+      console.error("Error fetching inventory page:", error);
+      const rawMessage = String(error?.message || "").toLowerCase();
+      const missingIndex = rawMessage.includes("requires an index") || rawMessage.includes("failed-precondition");
+
+      if (!isInitialLoad) {
+        if (missingIndex) {
+          setLoadMoreError("Load more needs Firestore index support. Deploy/update indexes, then retry.");
+        } else {
+          setLoadMoreError("Could not load more items. Check your connection and retry.");
+        }
+      }
+
+      if (isInitialLoad) setInventory([]);
+    } finally {
+      if (isInitialLoad) setLoading(false);
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Realtime first-page subscription (latest PAGE_SIZE items)
+  useEffect(() => {
+    if (!userId) {
+      setInventory([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setInitialFetchError("");
+    setLoadMoreError("");
+    setHasTriedLoadMore(false);
+
+    const initialQuery = query(
       collection(db, "inventory"),
-      where("userId", "==", auth.currentUser.uid),
+      where("userId", "==", userId),
       orderBy("timestamp", "desc"),
-      limit(fetchLimit)
+      limit(PAGE_SIZE)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setInventory(items);
-      setLoading(false);
-      setIsLoadingMore(false);
-    });
+    const unsubscribe = onSnapshot(
+      initialQuery,
+      (snapshot) => {
+        const firstPageItems = snapshot.docs.map((snapshotDoc) => ({
+          id: snapshotDoc.id,
+          ...snapshotDoc.data()
+        }));
+
+        setInventory((prev) => {
+          const firstPageIds = new Set(firstPageItems.map((item) => item.id));
+          const olderLoadedItems = prev.filter((item) => !firstPageIds.has(item.id));
+          return [...firstPageItems, ...olderLoadedItems];
+        });
+
+        setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+        setHasMore(snapshot.docs.length === PAGE_SIZE);
+        setInitialFetchError("");
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error subscribing to inventory:", error);
+        const rawMessage = String(error?.message || "").toLowerCase();
+        const missingIndex = rawMessage.includes("requires an index") || rawMessage.includes("failed-precondition");
+        if (missingIndex) {
+          setInitialFetchError("Inventory query needs a Firestore index. Deploy/update indexes, then refresh.");
+        } else {
+          setInitialFetchError("Could not load inventory right now.");
+        }
+        setLoading(false);
+      }
+    );
 
     return () => unsubscribe();
-  }, [fetchLimit]);
+  }, [userId, retryKey]);
 
   // Filter inventory based on search and category
-  useEffect(() => {
+  const filteredInventory = useMemo(() => {
     let filtered = [...inventory];
 
-    // Search filter (by name or SKU)
     if (searchText.trim()) {
       const search = searchText.toLowerCase();
       filtered = filtered.filter(
@@ -79,12 +195,11 @@ const InventoryList = () => {
       );
     }
 
-    // Category filter
     if (selectedCategory && selectedCategory !== "All") {
       filtered = filtered.filter((item) => item.category === selectedCategory);
     }
 
-    setFilteredInventory(filtered);
+    return filtered;
   }, [inventory, searchText, selectedCategory]);
 
   // Delete item
@@ -94,9 +209,9 @@ const InventoryList = () => {
     try {
       await deleteDoc(doc(db, "inventory", id));
       alert("✅ Item deleted successfully!");
-      
-      // Decrease total count
-      setTotalCount(prev => Math.max(0, prev - 1));
+
+      setInventory((prev) => prev.filter((item) => item.id !== id));
+      setTotalCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error("Error deleting item:", error);
       alert("❌ Failed to delete item.");
@@ -105,8 +220,14 @@ const InventoryList = () => {
 
   // Load more items
   const handleLoadMore = () => {
-    setIsLoadingMore(true);
-    setFetchLimit(prev => prev + 50);
+    setHasTriedLoadMore(true);
+    fetchPage(false);
+  };
+
+  const handleRetry = () => {
+    setInitialFetchError("");
+    setLoadMoreError("");
+    setRetryKey((prev) => prev + 1);
   };
 
   // Calculate summary
@@ -140,29 +261,17 @@ const InventoryList = () => {
 
       return (
         <tr key={item.id} className="border-b hover:bg-gray-50 transition">
-          <td className="p-3 text-gray-600">
-            {formatDate(item.timestamp)}
-          </td>
-          <td className="p-3 font-semibold text-gray-700">
-            {item.name || "(Unnamed)"}
-          </td>
-          <td className="p-3 text-gray-600">
-            {item.sku || "-"}
-          </td>
+          <td className="p-3 text-gray-600">{formatDate(item.timestamp)}</td>
+          <td className="p-3 font-semibold text-gray-700">{item.name || "(Unnamed)"}</td>
+          <td className="p-3 text-gray-600">{item.sku || "-"}</td>
           <td className="p-3 text-gray-600">
             <span className="bg-gray-100 px-2 py-1 rounded text-xs font-semibold">
               {item.category || "Other"}
             </span>
           </td>
-          <td className="p-3 text-right text-gray-700 font-medium">
-            ৳{price.toFixed(2)}
-          </td>
-          <td className="p-3 text-right text-gray-700">
-            {qty.toFixed(0)}
-          </td>
-          <td className="p-3 text-right text-gray-800 font-bold">
-            ৳{total.toFixed(2)}
-          </td>
+          <td className="p-3 text-right text-gray-700 font-medium">৳{price.toFixed(2)}</td>
+          <td className="p-3 text-right text-gray-700">{qty.toFixed(0)}</td>
+          <td className="p-3 text-right text-gray-800 font-bold">৳{total.toFixed(2)}</td>
           <td className="p-3 text-center">
             <button
               onClick={() => handleDelete(item.id, item.name)}
@@ -188,7 +297,11 @@ const InventoryList = () => {
   if (loading) {
     return (
       <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 max-w-6xl mx-auto mt-6">
-        <p className="text-center text-gray-500">⏳ Loading inventory...</p>
+        <div className="border-b pb-4 mb-4">
+          <h2 className="text-xl font-bold text-gray-800">📋 Inventory List</h2>
+          <p className="text-xs text-gray-400">View and manage your stock items.</p>
+        </div>
+        <InventorySkeleton />
       </div>
     );
   }
@@ -215,9 +328,7 @@ const InventoryList = () => {
       {/* Search & Filter */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
-          <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">
-            🔍 Search by Name or SKU
-          </label>
+          <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">🔍 Search by Name or SKU</label>
           <input
             type="text"
             className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -227,9 +338,7 @@ const InventoryList = () => {
           />
         </div>
         <div>
-          <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">
-            📁 Filter by Category
-          </label>
+          <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">📁 Filter by Category</label>
           <select
             className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={selectedCategory}
@@ -251,7 +360,19 @@ const InventoryList = () => {
           {inventory.length === 0 ? (
             <>
               <p className="text-lg font-semibold mb-2">📦 No inventory items yet</p>
-              <p className="text-sm">Add your first stock item using the form above.</p>
+              <p className="text-sm">
+                {initialFetchError
+                  ? "Inventory is temporarily unavailable. Use refresh/retry after fixing connection or index."
+                  : "Add your first stock item using the form above."}
+              </p>
+              {initialFetchError && (
+                <button
+                  onClick={handleRetry}
+                  className="mt-3 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition"
+                >
+                  Refresh Inventory
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -276,9 +397,7 @@ const InventoryList = () => {
                   <th className="text-center p-3 border-b font-bold">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {tableRows}
-              </tbody>
+              <tbody>{tableRows}</tbody>
             </table>
           </div>
 
@@ -300,7 +419,7 @@ const InventoryList = () => {
                 Showing <span className="font-bold text-gray-700">{inventory.length}</span> of{" "}
                 <span className="font-bold text-gray-700">{totalCount}</span> total items
               </p>
-              {inventory.length < totalCount && (
+              {hasMore && (
                 <button
                   onClick={handleLoadMore}
                   disabled={isLoadingMore}
@@ -318,6 +437,22 @@ const InventoryList = () => {
                     <>⬇️ Load More</>
                   )}
                 </button>
+              )}
+
+              {!hasMore && hasTriedLoadMore && (
+                <p className="text-sm text-gray-500 mt-3">No more items to load.</p>
+              )}
+
+              {loadMoreError && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-700 font-medium">⚠️ {loadMoreError}</p>
+                  <button
+                    onClick={handleLoadMore}
+                    className="mt-2 bg-red-600 text-white px-3 py-1.5 rounded font-bold hover:bg-red-700 transition"
+                  >
+                    Retry Load More
+                  </button>
+                </div>
               )}
             </div>
           )}
