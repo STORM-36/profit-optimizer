@@ -4,7 +4,7 @@
 MunafaOS (formerly Profit Optimizer) is a specialized web application designed to help Bangladeshi F-commerce entrepreneurs automate order processing, calculate real-time net profit, and manage "Banglish" (Bangla + English) customer data without manual Excel entry.
 
 ## 🚀 Live Demo
-**[Click here to visit MunafaOS](https://munafa-os.web.app)**
+**[Click here to visit MunafaOS]((https://profit-optimizer-v1.web.app))**
 
 ---
 
@@ -38,7 +38,7 @@ MunafaOS acts as a "Bridge" between unstructured chat messages and structured fi
 This project was developed as a University Thesis/Final Project.
 
 * **Creator & Lead Developer:** Mong Shainu Marma
-* **Co-Author & Contributor:** Munjur E Fatima Khan Monisha
+* **Co-Author, designing, logistic & Contributor:** Munjur E Fatima Khan Monisha
 
 ---
 
