@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { auth, provider as googleProvider } from '../firebase';
 import logoImg from '../assets/logo.png';
 import bgChart from '../assets/bg-chart.jpg';
@@ -9,8 +10,11 @@ import {
   signOut,
   sendPasswordResetEmail,
   signInWithPopup,
-  signInWithRedirect
+  signInWithRedirect,
+  getRedirectResult
 } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import { Mail, Lock, Eye, EyeOff, Shield, User, Building2, Phone, Zap, Cpu, Globe } from 'lucide-react';
 
 const FEATURE_BADGES = [
@@ -21,6 +25,7 @@ const FEATURE_BADGES = [
 ];
 
 const AuthForm = () => {
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -44,6 +49,22 @@ const AuthForm = () => {
     [loading, isLogin]
   );
 
+  const ensureUserProfile = useCallback(async (user) => {
+    if (!user?.uid) return;
+
+    const userRef = doc(db, 'users', user.uid);
+    const existingProfile = await getDoc(userRef);
+
+    if (!existingProfile.exists()) {
+      await setDoc(userRef, {
+        email: user.email || '',
+        role: 'owner',
+        workspaceId: user.uid,
+        createdAt: serverTimestamp()
+      });
+    }
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -52,6 +73,7 @@ const AuthForm = () => {
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
+        navigate('/dashboard', { replace: true });
       } else {
         if (password !== confirmPassword) {
           alert('Access Keys do not match.');
@@ -59,15 +81,17 @@ const AuthForm = () => {
           return;
         }
 
-        await createUserWithEmailAndPassword(auth, email, password);
-        if (auth.currentUser) {
-          await sendEmailVerification(auth.currentUser);
+        const signupResult = await createUserWithEmailAndPassword(auth, email, password);
+        await ensureUserProfile(signupResult.user);
+        if (signupResult.user) {
+          await sendEmailVerification(signupResult.user);
         }
         await signOut(auth);
         alert('Account initialized! Please check your email (and spam folder) for the verification link before signing in.');
         setIsLogin(true);
         setPassword('');
         setConfirmPassword('');
+        navigate('/login', { replace: true });
       }
     } catch (err) {
       setError(String(err?.message || '').replace('Firebase: ', ''));
@@ -79,7 +103,9 @@ const AuthForm = () => {
   const handleGoogleLogin = async () => {
     setError('');
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      await ensureUserProfile(result.user);
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       if (err?.code === 'auth/popup-blocked') {
         await signInWithRedirect(auth, googleProvider);
@@ -88,6 +114,19 @@ const AuthForm = () => {
       }
     }
   };
+
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result?.user) {
+          await ensureUserProfile(result.user);
+          navigate('/dashboard', { replace: true });
+        }
+      })
+      .catch((err) => {
+        setError(String(err?.message || 'Google sign-in failed'));
+      });
+  }, [ensureUserProfile, navigate]);
 
   const handleResetPassword = async () => {
     if (!email.trim()) {

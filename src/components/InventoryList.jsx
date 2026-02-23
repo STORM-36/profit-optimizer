@@ -1,6 +1,6 @@
 /* src/components/InventoryList.jsx */
 import React, { useState, useEffect, useMemo } from "react";
-import { db, auth } from "../firebase";
+import { db } from "../firebase";
 import {
   collection,
   query,
@@ -15,6 +15,7 @@ import {
   startAfter
 } from "firebase/firestore";
 import { CATEGORY_OPTIONS } from "../utils/categories";
+import { useAuth } from "../context/AuthContext";
 
 const PAGE_SIZE = 50;
 
@@ -27,6 +28,7 @@ const InventorySkeleton = () => (
 );
 
 const InventoryList = () => {
+  const { currentUser, workspaceId, userRole } = useAuth();
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
@@ -40,11 +42,10 @@ const InventoryList = () => {
   const [hasTriedLoadMore, setHasTriedLoadMore] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
-  const userId = auth.currentUser?.uid;
+  const effectiveWorkspaceId = workspaceId || currentUser?.uid || null;
 
-  // Fetch server-side total count
   useEffect(() => {
-    if (!userId) {
+    if (!effectiveWorkspaceId) {
       setTotalCount(0);
       return;
     }
@@ -53,7 +54,7 @@ const InventoryList = () => {
       try {
         const countQuery = query(
           collection(db, "inventory"),
-          where("userId", "==", userId)
+          where("workspaceId", "==", effectiveWorkspaceId)
         );
         const snapshot = await getCountFromServer(countQuery);
         setTotalCount(snapshot.data().count);
@@ -64,10 +65,10 @@ const InventoryList = () => {
     };
 
     fetchTotalCount();
-  }, [userId]);
+  }, [effectiveWorkspaceId]);
 
   const fetchPage = async (isInitialLoad = false) => {
-    if (!userId) {
+    if (!effectiveWorkspaceId) {
       setLoading(false);
       return;
     }
@@ -80,7 +81,7 @@ const InventoryList = () => {
 
     try {
       const constraints = [
-        where("userId", "==", userId),
+        where("workspaceId", "==", effectiveWorkspaceId),
         orderBy("timestamp", "desc"),
         limit(PAGE_SIZE)
       ];
@@ -127,9 +128,8 @@ const InventoryList = () => {
     }
   };
 
-  // Realtime first-page subscription (latest PAGE_SIZE items)
   useEffect(() => {
-    if (!userId) {
+    if (!effectiveWorkspaceId) {
       setInventory([]);
       setLoading(false);
       return;
@@ -142,7 +142,7 @@ const InventoryList = () => {
 
     const initialQuery = query(
       collection(db, "inventory"),
-      where("userId", "==", userId),
+      where("workspaceId", "==", effectiveWorkspaceId),
       orderBy("timestamp", "desc"),
       limit(PAGE_SIZE)
     );
@@ -180,9 +180,8 @@ const InventoryList = () => {
     );
 
     return () => unsubscribe();
-  }, [userId, retryKey]);
+  }, [effectiveWorkspaceId, retryKey]);
 
-  // Filter inventory based on search and category
   const filteredInventory = useMemo(() => {
     let filtered = [...inventory];
 
@@ -202,8 +201,12 @@ const InventoryList = () => {
     return filtered;
   }, [inventory, searchText, selectedCategory]);
 
-  // Delete item
   const handleDelete = async (id, name) => {
+    if (userRole !== "owner") {
+      alert("Only owners can delete inventory items.");
+      return;
+    }
+
     if (!window.confirm(`Delete "${name}" from inventory?`)) return;
 
     try {
@@ -218,7 +221,6 @@ const InventoryList = () => {
     }
   };
 
-  // Load more items
   const handleLoadMore = () => {
     setHasTriedLoadMore(true);
     fetchPage(false);
@@ -230,7 +232,6 @@ const InventoryList = () => {
     setRetryKey((prev) => prev + 1);
   };
 
-  // Calculate summary
   const totalItems = filteredInventory.reduce((sum, item) => {
     return sum + (parseFloat(item.quantity) || 0);
   }, 0);
@@ -241,7 +242,6 @@ const InventoryList = () => {
     return sum + price * qty;
   }, 0);
 
-  // Format date
   const formatDate = (timestamp) => {
     if (!timestamp) return "-";
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -252,7 +252,6 @@ const InventoryList = () => {
     });
   };
 
-  // Memoized table rows for performance
   const tableRows = useMemo(() => {
     return filteredInventory.map((item) => {
       const price = parseFloat(item.buyingPrice) || 0;
@@ -273,20 +272,22 @@ const InventoryList = () => {
           <td className="p-3 text-right text-gray-700">{qty.toFixed(0)}</td>
           <td className="p-3 text-right text-gray-800 font-bold">৳{total.toFixed(2)}</td>
           <td className="p-3 text-center">
-            <button
-              onClick={() => handleDelete(item.id, item.name)}
-              className="text-red-600 hover:text-red-800 font-bold transition"
-              title="Delete"
-            >
-              🗑️
-            </button>
+            {userRole === "owner" && (
+              <button
+                onClick={() => handleDelete(item.id, item.name)}
+                className="text-red-600 hover:text-red-800 font-bold transition"
+                title="Delete"
+              >
+                🗑️
+              </button>
+            )}
           </td>
         </tr>
       );
     });
-  }, [filteredInventory]);
+  }, [filteredInventory, userRole]);
 
-  if (!auth.currentUser) {
+  if (!currentUser) {
     return (
       <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 max-w-6xl mx-auto mt-6">
         <p className="text-center text-gray-500">Please login to view inventory.</p>
@@ -313,7 +314,6 @@ const InventoryList = () => {
         <p className="text-xs text-gray-400">View and manage your stock items.</p>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
           <p className="text-xs text-blue-600 font-bold uppercase mb-1">Total Items in Stock</p>
@@ -325,7 +325,6 @@ const InventoryList = () => {
         </div>
       </div>
 
-      {/* Search & Filter */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">🔍 Search by Name or SKU</label>
@@ -354,7 +353,6 @@ const InventoryList = () => {
         </div>
       </div>
 
-      {/* Inventory Table */}
       {filteredInventory.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
           {inventory.length === 0 ? (
@@ -401,7 +399,6 @@ const InventoryList = () => {
             </table>
           </div>
 
-          {/* Footer Stats */}
           <div className="mt-4 pt-4 border-t flex justify-between items-center text-sm">
             <p className="text-gray-600">
               Showing <span className="font-bold">{filteredInventory.length}</span> of{" "}
@@ -412,7 +409,6 @@ const InventoryList = () => {
             </p>
           </div>
 
-          {/* Load More Section */}
           {!searchText && !selectedCategory && (
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-500 mb-3">

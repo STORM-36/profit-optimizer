@@ -1,20 +1,21 @@
 import React, { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 
-const TopNav = ({ currentView, onChangeView, onLogout, menuItems }) => {
+const TopNav = ({ onLogout, menuItems }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const location = useLocation();
 
-  const handleMenuClick = (key) => {
-    console.log("🔄 Switching to:", key);
-    onChangeView(key);
+  const handleMenuClick = (path) => {
+    console.log("🔄 Navigating to:", path);
     setDropdownOpen(false);
   };
 
   return (
     <nav className="bg-white shadow-sm p-4 sticky top-0 z-50">
       <div className="max-w-4xl mx-auto flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600 tracking-tighter">
+        <Link to="/dashboard" className="text-xl font-bold text-blue-600 tracking-tighter">
           🚀 MunafaOS
-        </h1>
+        </Link>
 
         <div className="flex gap-3 items-center">
           {/* DROPDOWN MENU */}
@@ -36,17 +37,18 @@ const TopNav = ({ currentView, onChangeView, onLogout, menuItems }) => {
             {dropdownOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                 {menuItems.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => handleMenuClick(item.key)}
-                    className={`w-full text-left px-4 py-2 text-sm font-semibold transition ${
-                      currentView === item.key
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => handleMenuClick(item.to)}
+                    className={`block w-full text-left px-4 py-2 text-sm font-semibold transition ${
+                      location.pathname === item.to
                         ? "bg-blue-100 text-blue-700"
                         : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
                     {item.label}
-                  </button>
+                  </Link>
                 ))}
               </div>
             )}
@@ -54,9 +56,9 @@ const TopNav = ({ currentView, onChangeView, onLogout, menuItems }) => {
 
           <button
             onClick={onLogout}
-            className="bg-red-100 text-red-600 px-3 py-1 rounded-lg text-sm font-bold hover:bg-red-200"
+            className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-extrabold hover:bg-red-700 shadow-md shadow-red-200"
           >
-            Logout
+            Sign Out
           </button>
         </div>
       </div>

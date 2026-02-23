@@ -7,6 +7,7 @@ import UnitCostCalculator from './UnitCostCalculator'; // 👈 NEW IMPORT
 import { parseText } from '../utils/parser';
 import { SAMPLE_DATA } from '../utils/sampleData';
 import { CATEGORY_OPTIONS } from '../utils/categories';
+import { useAuth } from '../context/AuthContext';
 
 // 🛡️ INPUT SANITIZATION - Prevents XSS and injection attacks
 const sanitizeInput = (input) => {
@@ -38,6 +39,7 @@ const normalizeCategory = (value) => {
 };
 
 const SmartForm = () => {
+  const { currentUser, workspaceId } = useAuth();
   const [inputText, setInputText] = useState('');
   const [showCalculator, setShowCalculator] = useState(false); // 👈 NEW STATE FOR CALCULATOR
   
@@ -125,7 +127,9 @@ const SmartForm = () => {
 
   // �💾 SAVE ORDER
   const handleSave = async () => {
-    if (!auth.currentUser) {
+    const effectiveWorkspaceId = workspaceId || currentUser?.uid || null;
+
+    if (!currentUser || !effectiveWorkspaceId) {
       alert("⚠️ Please Login First!");
       return;
     }
@@ -135,7 +139,7 @@ const SmartForm = () => {
     const ads = parseFloat(manualData.adCost);
     const discount = parseFloat(manualData.discountPrice);
     const safeCategory = normalizeCategory(manualData.category);
-    const addedByFallback = auth.currentUser?.displayName || auth.currentUser?.email || '';
+    const addedByFallback = currentUser?.displayName || currentUser?.email || '';
     const safeAddedBy = sanitizeInput(manualData.addedBy || addedByFallback || '');
 
     if (!selling || selling <= 0) {
@@ -150,7 +154,8 @@ const SmartForm = () => {
     try {
       // 🛡️ SANITIZE ALL INPUTS BEFORE SAVING
       await addDoc(collection(db, "orders"), {
-        userId: auth.currentUser.uid,
+        userId: currentUser.uid,
+        workspaceId: effectiveWorkspaceId,
         originalText: sanitizeInput(inputText),
         name: sanitizeInput(manualData.name),
         phone: sanitizeInput(manualData.phone),

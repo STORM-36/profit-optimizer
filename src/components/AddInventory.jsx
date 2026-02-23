@@ -6,8 +6,10 @@ import ImageUploadOCR from "./ImageUploadOCR";
 import { CATEGORY_OPTIONS } from "../utils/categories";
 import { db, auth } from "../firebase"; // Using your existing firebase connection
 import { collection, addDoc, serverTimestamp, writeBatch, doc } from "firebase/firestore";
+import { useAuth } from '../context/AuthContext';
 
 const AddInventory = () => {
+  const { currentUser, workspaceId } = useAuth();
   // 1. State for the Magic AI Input
   const [aiInput, setAiInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -100,11 +102,13 @@ const AddInventory = () => {
   };
 
   const handleBulkSave = async () => {
-    if (!auth.currentUser) return alert("Please login first.");
+    const effectiveWorkspaceId = workspaceId || currentUser?.uid || null;
+
+    if (!currentUser || !effectiveWorkspaceId) return alert("Please login first.");
     if (!bulkItems.length) return alert("No items to save.");
 
     const batch = writeBatch(db);
-    const userId = auth.currentUser.uid;
+    const userId = currentUser.uid;
     const supplierName = String(bulkSupplier.supplierName || "").trim();
     const invoiceNumber = String(bulkSupplier.invoiceNumber || "").trim();
 
@@ -119,6 +123,7 @@ const AddInventory = () => {
       const docRef = doc(collection(db, "inventory"));
       batch.set(docRef, {
         userId,
+        workspaceId: effectiveWorkspaceId,
         name,
         buyingPrice: safeBuyingPrice,
         quantity: safeQuantity,
@@ -196,7 +201,9 @@ const AddInventory = () => {
 
   // 💾 SAVE TO FIREBASE (Inventory Collection)
   const handleSave = async () => {
-    if (!auth.currentUser) return alert("Please login first.");
+    const effectiveWorkspaceId = workspaceId || currentUser?.uid || null;
+
+    if (!currentUser || !effectiveWorkspaceId) return alert("Please login first.");
     if (!formData.name || !formData.buyingPrice) return alert("Fill required fields");
 
     const safeBuyingPrice = toNumber(formData.buyingPrice);
@@ -204,14 +211,15 @@ const AddInventory = () => {
     const safeSellingPrice = toNumber(formData.sellingPrice);
     const safeDiscountPrice = toNumber(formData.discountPrice);
     const safeCategory = normalizeCategory(formData.category);
-    const addedByFallback = auth.currentUser?.displayName || auth.currentUser?.email || "";
+    const addedByFallback = currentUser?.displayName || currentUser?.email || "";
     const safeAddedBy = String(formData.addedBy || addedByFallback || "").trim();
 
     if (safeBuyingPrice <= 0) return alert("Buying price must be greater than 0");
 
     try {
       await addDoc(collection(db, "inventory"), {
-        userId: auth.currentUser.uid,
+        userId: currentUser.uid,
+        workspaceId: effectiveWorkspaceId,
         name: String(formData.name || "").trim(),
         buyingPrice: safeBuyingPrice,
         quantity: safeQuantity,

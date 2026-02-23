@@ -1,44 +1,115 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Required helper: fetches current user's profile document data
+    function getUserData() {
+      return getUserDoc().data;
+    }
+
+    function hasUserProfile() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Required helper: checks workspace membership
+    function isWorkspaceMember(workspaceId) {
+      return hasUserProfile() &&
+        workspaceId is string &&
+        getUserData().workspaceId == workspaceId;
+    }
+
+    // Required helper: checks owner role
+    function isOwner() {
+      return hasUserProfile() && getUserData().role == 'owner';
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     // ============================================
-    // ORDERS COLLECTION
+    // USERS COLLECTION
     // ============================================
-    match /orders/{orderId} {
-      // READ: User can only read their own orders
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      
-      // CREATE: User can only create orders for themselves
-      allow create: if request.auth != null && 
-                       request.resource.data.userId == request.auth.uid &&
-                       request.resource.data.timestamp != null;
-      
-      // UPDATE: User can only update their own orders
-      allow update: if request.auth != null && 
-                       resource.data.userId == request.auth.uid;
-      
-      // DELETE: User can only delete their own orders
-      allow delete: if request.auth != null && 
-                       resource.data.userId == request.auth.uid;
+    match /users/{userId} {
+      // User can read own profile; owner can read profiles in same workspace
+      allow read: if isSelf(userId) ||
+        (isOwner() && isWorkspaceMember(resource.data.workspaceId));
+
+      // Self bootstrap profile on first login
+      allow create: if isSelf(userId) &&
+        request.resource.data.workspaceId == request.auth.uid &&
+        request.resource.data.role == 'owner';
+
+      // Owner can create profiles in same workspace
+      allow create: if isOwner() &&
+        isWorkspaceMember(request.resource.data.workspaceId);
+
+      // User can update own profile, but cannot self-escalate role/workspace
+      allow update: if isSelf(userId) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.workspaceId == resource.data.workspaceId;
+
+      // Owner can update profiles in same workspace
+      allow update: if isOwner() &&
+        isWorkspaceMember(resource.data.workspaceId) &&
+        isWorkspaceMember(request.resource.data.workspaceId);
+
+      // User can delete own profile; owner can delete profiles in same workspace
+      allow delete: if isSelf(userId) ||
+        (isOwner() && isWorkspaceMember(resource.data.workspaceId));
     }
 
     // ============================================
     // INVENTORY COLLECTION
     // ============================================
     match /inventory/{inventoryId} {
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read, delete: if isWorkspaceMember(resource.data.workspaceId);
 
-      allow create: if request.auth != null &&
-                      request.resource.data.userId == request.auth.uid &&
-                      request.resource.data.timestamp != null;
+      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
 
-      allow update, delete: if request.auth != null &&
-                              resource.data.userId == request.auth.uid;
+      allow update: if isWorkspaceMember(resource.data.workspaceId) &&
+        isWorkspaceMember(request.resource.data.workspaceId) &&
+        request.resource.data.workspaceId == resource.data.workspaceId;
     }
-    
+
     // ============================================
-    // CATCH-ALL (Deny everything else)
+    // ORDERS COLLECTION
+    // ============================================
+    match /orders/{orderId} {
+      allow read, delete: if isWorkspaceMember(resource.data.workspaceId);
+
+      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
+
+      allow update: if isWorkspaceMember(resource.data.workspaceId) &&
+        isWorkspaceMember(request.resource.data.workspaceId) &&
+        request.resource.data.workspaceId == resource.data.workspaceId;
+    }
+
+    // ============================================
+    // AUDIT LOGS COLLECTION
+    // ============================================
+    match /audit_logs/{logId} {
+      // Workspace members can create logs
+      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
+
+      // Only owners can read/delete logs in their own workspace
+      allow read, delete: if isOwner() &&
+        isWorkspaceMember(resource.data.workspaceId);
+
+      // Immutable audit trail
+      allow update: if false;
+    }
+
+    // ============================================
+    // CATCH-ALL
     // ============================================
     match /{document=**} {
       allow read, write: if false;

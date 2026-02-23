@@ -2,23 +2,31 @@ import React, { useState } from 'react';
 import { auth, db } from '../firebase';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { deleteUser, signOut } from 'firebase/auth';
+import { useAuth } from '../context/AuthContext';
 
 const Settings = ({ goBack }) => {
+  const { currentUser, workspaceId, userRole } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
 
   // 1. ERASE DATA ONLY (Keep Account)
   const handleEraseData = async () => {
+    if (userRole !== 'owner') {
+      alert('Only owners can access this action.');
+      return;
+    }
+
     const confirm = window.prompt("⚠️ DANGER: This will delete ALL your order history.\nType 'DELETE' to confirm.");
     
     if (confirm !== 'DELETE') return;
 
     setIsDeleting(true);
     try {
-      const user = auth.currentUser;
-      if (!user) return;
+      const user = currentUser || auth.currentUser;
+      const effectiveWorkspaceId = workspaceId || user?.uid || null;
+      if (!user || !effectiveWorkspaceId) return;
 
-      // Find all orders for this user
-      const q = query(collection(db, "orders"), where("userId", "==", user.uid));
+      // Find all orders for this workspace
+      const q = query(collection(db, "orders"), where("workspaceId", "==", effectiveWorkspaceId));
       const snapshot = await getDocs(q);
 
       // Delete them one by one
@@ -37,6 +45,11 @@ const Settings = ({ goBack }) => {
 
   // 2. DELETE ACCOUNT (Nuclear Option)
   const handleDeleteAccount = async () => {
+    if (userRole !== 'owner') {
+      alert('Only owners can access this action.');
+      return;
+    }
+
     const confirm = window.prompt("⛔ FINAL WARNING: This will delete your Account AND Data.\nThis cannot be undone.\n\nType 'DELETE' to confirm.");
     
     if (confirm !== 'DELETE') return;
@@ -47,7 +60,7 @@ const Settings = ({ goBack }) => {
       await handleEraseData(); 
 
       // Step B: Delete User from Auth
-      const user = auth.currentUser;
+      const user = currentUser || auth.currentUser;
       await deleteUser(user);
       
       alert("👋 Account deleted. Goodbye!");
@@ -73,6 +86,13 @@ const Settings = ({ goBack }) => {
       </div>
 
       <div className="space-y-6">
+        {userRole !== 'owner' ? (
+          <div className="p-4 border border-yellow-200 bg-yellow-50 rounded-xl">
+            <h3 className="font-bold text-yellow-800 text-lg">Owner Access Required</h3>
+            <p className="text-sm text-yellow-700 mt-1">Only workspace owners can access Settings actions.</p>
+          </div>
+        ) : (
+          <>
         
         {/* OPTION 1: Erase Data */}
         <div className="p-4 border border-orange-200 bg-orange-50 rounded-xl">
@@ -105,6 +125,8 @@ const Settings = ({ goBack }) => {
             {isDeleting ? "Goodbye..." : "Delete My Account"}
           </button>
         </div>
+          </>
+        )}
 
       </div>
     </div>

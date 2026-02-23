@@ -4,21 +4,27 @@ import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDo
 import * as XLSX from 'xlsx';
 import Dashboard from './Dashboard'; // 👈 NEW: Import the Charts!
 import Receipt from './Receipt'; // 👈 Import Receipt
+import { useAuth } from '../context/AuthContext';
 
 const OrderList = () => {
+  const { currentUser, workspaceId, userRole } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null); 
   const [receiptOrder, setReceiptOrder] = useState(null); // 👈 For receipt modal
-  const user = auth.currentUser;
+  const effectiveWorkspaceId = workspaceId || currentUser?.uid || null;
 
   // 1. 🔄 FETCH DATA
   useEffect(() => {
-    if (!user) return;
+    if (!effectiveWorkspaceId) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
     
     const q = query(
       collection(db, "orders"), 
-      where("userId", "==", user.uid), 
+      where("workspaceId", "==", effectiveWorkspaceId), 
       orderBy("timestamp", "desc")
     );
 
@@ -29,7 +35,7 @@ const OrderList = () => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [effectiveWorkspaceId]);
 
   // 2. 🟢 STATUS CHANGER (Pending -> Delivered -> Returned)
   const handleStatusChange = async (id, newStatus) => {
@@ -41,6 +47,11 @@ const OrderList = () => {
 
   // 3. 🗑️ DELETE FUNCTION
   const handleDelete = async (id) => {
+    if (userRole !== 'owner') {
+      alert('Only owners can delete orders.');
+      return;
+    }
+
     if(window.confirm("Are you sure you want to delete this order permanently?")) {
         await deleteDoc(doc(db, "orders", id));
     }
@@ -111,7 +122,7 @@ const OrderList = () => {
     );
   }
 
-  if (!user) {
+  if (!currentUser) {
     return (
       <div className="text-center p-10 text-yellow-600 bg-yellow-50 rounded-lg">
         <p>📍 Please login to see orders</p>
@@ -209,12 +220,14 @@ const OrderList = () => {
                           🧾
                         </button>
                         {/* DELETE BUTTON */}
-                        <button 
-                          onClick={() => handleDelete(order.id)} 
-                          className="bg-red-50 text-red-500 px-3 py-1 rounded text-xs font-bold hover:bg-red-100"
-                        >
-                          🗑️
-                        </button>
+                        {userRole === 'owner' && (
+                          <button 
+                            onClick={() => handleDelete(order.id)} 
+                            className="bg-red-50 text-red-500 px-3 py-1 rounded text-xs font-bold hover:bg-red-100"
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

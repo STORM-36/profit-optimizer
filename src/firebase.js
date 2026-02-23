@@ -1,5 +1,5 @@
 // src/firebase.js
-import { initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
@@ -14,9 +14,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+// Secondary app instance for admin-managed account creation
+const secondaryApp = getApps().some((existingApp) => existingApp.name === "SecondaryApp")
+  ? getApp("SecondaryApp")
+  : initializeApp(firebaseConfig, "SecondaryApp");
 
 // 👇 THESE ARE THE LINES YOU LIKELY MISSED BEFORE
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
+export const secondaryAuth = getAuth(secondaryApp);
