@@ -1,13 +1,13 @@
 import React from 'react';
-import { signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 
 const Unauthorized = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleEmergencyExit = async () => {
-    await signOut(auth);
+    await logout();
     navigate('/login', { replace: true });
   };
 

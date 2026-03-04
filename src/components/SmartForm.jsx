@@ -8,6 +8,7 @@ import { parseText } from '../utils/parser';
 import { SAMPLE_DATA } from '../utils/sampleData';
 import { CATEGORY_OPTIONS } from '../utils/categories';
 import { useAuth } from '../context/AuthContext';
+import { logAudit } from '../utils/auditLogger';
 
 // 🛡️ INPUT SANITIZATION - Prevents XSS and injection attacks
 const sanitizeInput = (input) => {
@@ -153,7 +154,7 @@ const SmartForm = () => {
 
     try {
       // 🛡️ SANITIZE ALL INPUTS BEFORE SAVING
-      await addDoc(collection(db, "orders"), {
+      const createdOrder = await addDoc(collection(db, "orders"), {
         userId: currentUser.uid,
         workspaceId: effectiveWorkspaceId,
         originalText: sanitizeInput(inputText),
@@ -173,6 +174,19 @@ const SmartForm = () => {
         netProfit: netProfit,
         timestamp: serverTimestamp()
       });
+
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId,
+            currentUser,
+            'CREATED_ORDER',
+            `Created order ${createdOrder.id} for ${sanitizeInput(manualData.name || 'Unknown customer')}`
+          );
+        } catch (err) {
+          console.error(err);
+        }
+      }
 
       // Reset Form
       setInputText(''); 

@@ -1,295 +1,403 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  collection,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where
-} from 'firebase/firestore';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { db, secondaryAuth } from '../firebase';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where, orderBy, getDocs, limit } from 'firebase/firestore';
+import { db } from '../firebase';
+import { logAudit } from '../utils/auditLogger';
 
 const TeamManagement = () => {
-  const { currentUser, userRole, workspaceId } = useAuth();
-  const [employeeEmail, setEmployeeEmail] = useState('');
-  const [tempPassword, setTempPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [employees, setEmployees] = useState([]);
+  const { currentUser, workspaceId, userRole } = useAuth();
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [isAddingMode, setIsAddingMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [loadingEmployees, setLoadingEmployees] = useState(true);
-  const [loadingAudit, setLoadingAudit] = useState(true);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    role: 'Operator'
+  });
 
-  const effectiveWorkspaceId = useMemo(
-    () => workspaceId || currentUser?.uid || null,
-    [workspaceId, currentUser]
-  );
-
-  const loadEmployees = async () => {
-    if (!effectiveWorkspaceId) {
-      setEmployees([]);
-      setLoadingEmployees(false);
-      return;
-    }
-
-    setLoadingEmployees(true);
-    try {
-      const employeesQuery = query(
-        collection(db, 'users'),
-        where('workspaceId', '==', effectiveWorkspaceId),
-        where('role', '==', 'operator')
-      );
-
-      const employeeSnapshot = await getDocs(employeesQuery);
-      const employeeRows = employeeSnapshot.docs.map((snapshotDoc) => ({
-        id: snapshotDoc.id,
-        ...snapshotDoc.data()
-      }));
-
-      employeeRows.sort((firstRow, secondRow) => {
-        const firstTime = firstRow?.createdAt?.seconds || 0;
-        const secondTime = secondRow?.createdAt?.seconds || 0;
-        return secondTime - firstTime;
-      });
-
-      setEmployees(employeeRows);
-    } catch (error) {
-      console.error('Error loading employees:', error);
-      setEmployees([]);
-    } finally {
-      setLoadingEmployees(false);
-    }
-  };
-
-  const loadAuditLogs = async () => {
-    if (!effectiveWorkspaceId) {
-      setAuditLogs([]);
-      setLoadingAudit(false);
-      return;
-    }
-
-    setLoadingAudit(true);
-    try {
-      const auditQuery = query(
-        collection(db, 'audit_logs'),
-        where('workspaceId', '==', effectiveWorkspaceId),
-        orderBy('timestamp', 'desc')
-      );
-
-      const auditSnapshot = await getDocs(auditQuery);
-      const auditRows = auditSnapshot.docs.map((snapshotDoc) => ({
-        id: snapshotDoc.id,
-        ...snapshotDoc.data()
-      }));
-
-      setAuditLogs(auditRows);
-    } catch (error) {
-      console.error('Error loading audit logs:', error);
-      setAuditLogs([]);
-    } finally {
-      setLoadingAudit(false);
-    }
-  };
+  const effectiveWorkspaceId = workspaceId || currentUser?.workspaceId || null;
 
   useEffect(() => {
-    if (userRole !== 'owner') {
-      setLoadingEmployees(false);
-      setLoadingAudit(false);
+    if (!effectiveWorkspaceId) {
+      setTeamMembers([]);
+      setIsLoading(false);
       return;
     }
 
-    loadEmployees();
-    loadAuditLogs();
-  }, [userRole, effectiveWorkspaceId]);
+    setIsLoading(true);
 
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return '-';
-    const parsedDate = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return parsedDate.toLocaleString('en-GB');
+    const usersQuery = query(
+      collection(db, 'users'),
+      where('workspaceId', '==', effectiveWorkspaceId)
+    );
+
+    const unsubscribe = onSnapshot(
+      usersQuery,
+      (usersSnapshot) => {
+        const rows = usersSnapshot.docs
+          .map((snapshotDoc) => ({ id: snapshotDoc.id, ...snapshotDoc.data() }))
+          .filter((user) => {
+            const normalizedRole = String(user.role || '').toLowerCase();
+            return normalizedRole === 'admin' || normalizedRole === 'operator';
+          })
+          .filter((user) => String(user.status || 'active').toLowerCase() !== 'disabled')
+          .map((user) => ({
+            id: user.id,
+            uid: user.id,
+            firstName: user.firstName || '',
+            name:
+              [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+              user.shopName ||
+              user.displayName ||
+              'Team Member',
+            email: user.email || '-',
+            role:
+              String(user.role || 'Operator').toLowerCase() === 'admin'
+                ? 'Admin'
+                : 'Operator',
+            status: String(user.status || 'Offline').toLowerCase() === 'online' ? 'Online' : 'Offline'
+          }));
+
+        setTeamMembers(rows);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('Team realtime subscription failed:', error);
+        alert('Failed to track team status in real time: ' + error.message);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [effectiveWorkspaceId]);
+
+  const handleInputChange = (field) => (event) => {
+    setFormData((previousFormData) => ({
+      ...previousFormData,
+      [field]: event.target.value
+    }));
   };
 
-  const handleAddEmployee = async (event) => {
+  const handleCreateEmployee = async (event) => {
     event.preventDefault();
 
-    if (!employeeEmail.trim() || !tempPassword.trim()) {
-      alert('Please provide employee email and temporary password.');
+    const firstName = formData.firstName.trim();
+    const lastName = formData.lastName.trim();
+    const email = formData.email.trim();
+
+    if (!firstName || !lastName || !email || !formData.password) {
+      alert('Please fill all required fields.');
       return;
     }
 
     if (!effectiveWorkspaceId) {
-      alert('Workspace is not available for this user yet.');
+      alert('Workspace not found. Please re-login and try again.');
       return;
     }
 
-    setSubmitting(true);
+    setIsSaving(true);
     try {
-      const createdUserCredential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        employeeEmail.trim(),
-        tempPassword.trim()
-      );
-
-      const newEmployeeUser = createdUserCredential.user;
-
-      await setDoc(doc(db, 'users', newEmployeeUser.uid), {
-        email: employeeEmail.trim(),
-        role: 'operator',
+      const createdMember = await addDoc(collection(db, 'users'), {
+        firstName,
+        lastName,
+        email,
+        role: formData.role.toLowerCase(),
+        status: 'Offline',
         workspaceId: effectiveWorkspaceId,
-        createdAt: serverTimestamp()
+        createdBy: currentUser?.uid || '',
+        createdAt: new Date()
       });
 
-      await signOut(secondaryAuth);
-
-      setEmployeeEmail('');
-      setTempPassword('');
-      alert('Employee account created successfully.');
-
-      await loadEmployees();
-    } catch (error) {
-      console.error('Error creating employee account:', error);
-      alert(error?.message || 'Failed to create employee account.');
-      try {
-        await signOut(secondaryAuth);
-      } catch (signOutError) {
-        console.error('Secondary auth sign-out error:', signOutError);
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId,
+            currentUser,
+            'CREATED_EMPLOYEE',
+            `Created employee: ${firstName} ${lastName} (${email}) [${createdMember.id}]`
+          );
+        } catch (err) {
+          console.error(err);
+        }
       }
+
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        role: 'Operator'
+      });
+      setIsAddingMode(false);
+      alert('Employee saved successfully.');
+    } catch (error) {
+      console.error('Employee create failed:', error);
+      alert('Failed to create employee: ' + error.message);
     } finally {
-      setSubmitting(false);
+      setIsSaving(false);
     }
   };
 
-  const handleRevokeAccess = async (employeeId, email) => {
-    if (!window.confirm(`Revoke access for ${email}?`)) return;
+  const handleRevokeAccess = async (memberId) => {
+    if (!window.confirm('Revoke access for this team member?')) return;
 
     try {
-      await updateDoc(doc(db, 'users', employeeId), {
+      await updateDoc(doc(db, 'users', memberId), {
         role: 'revoked',
         status: 'disabled'
       });
-      setEmployees((previousEmployees) =>
-        previousEmployees.filter((employee) => employee.id !== employeeId)
-      );
+
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId,
+            currentUser,
+            'REVOKED_EMPLOYEE',
+            `Revoked employee access: ${memberId}`
+          );
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      setTeamMembers((previousMembers) => previousMembers.filter((member) => member.id !== memberId));
     } catch (error) {
-      console.error('Error revoking employee access:', error);
-      alert('Failed to revoke access.');
+      console.error('Revoke failed:', error);
+      alert('Failed to revoke access: ' + error.message);
     }
   };
 
-  if (userRole !== 'owner') {
-    return (
-      <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 max-w-6xl mx-auto mt-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Team Management</h2>
-        <p className="text-gray-500">You are not authorized to access this page.</p>
-      </div>
-    );
-  }
+  const handleOpenAudit = async (employee) => {
+    setSelectedEmployee(employee);
+    setIsAuditModalOpen(true);
+    setIsLoadingLogs(true);
+
+    try {
+      const logsQuery = query(
+        collection(db, 'audit_logs'),
+        where('userId', '==', employee.uid || employee.id),
+        orderBy('timestamp', 'desc'),
+        limit(50)
+      );
+
+      const logsSnapshot = await getDocs(logsQuery);
+      const rows = logsSnapshot.docs.map((snapshotDoc) => ({
+        id: snapshotDoc.id,
+        ...snapshotDoc.data()
+      }));
+
+      setAuditLogs(rows);
+    } catch (error) {
+      console.error('Failed to fetch audit logs:', error);
+      setAuditLogs([]);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 max-w-6xl mx-auto mt-6 space-y-8">
-      <div className="border-b pb-4">
-        <h2 className="text-xl font-bold text-gray-800">👥 Team Management</h2>
-        <p className="text-xs text-gray-400">Manage operators and monitor workspace activity.</p>
+    <div className="max-w-6xl mx-auto py-8 px-4 font-sans">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Team & Workspace Access</h1>
+          <p className="text-slate-500 mt-1">Manage who has access to your store.</p>
+          {currentUser?.shopName && <p className="text-xs text-slate-400 mt-1">{currentUser.shopName}</p>}
+        </div>
+        <button
+          disabled={userRole !== 'owner'}
+          onClick={() => setIsAddingMode((previousState) => !previousState)}
+          className="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Add New Employee
+        </button>
       </div>
 
-      <section>
-        <h3 className="text-lg font-bold text-gray-800 mb-3">Add Employee</h3>
-        <form onSubmit={handleAddEmployee} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input
-            type="email"
-            value={employeeEmail}
-            onChange={(event) => setEmployeeEmail(event.target.value)}
-            placeholder="Employee Email"
-            className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
-          <input
-            type="password"
-            value={tempPassword}
-            onChange={(event) => setTempPassword(event.target.value)}
-            placeholder="Temporary Password"
-            className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-          />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700 transition disabled:opacity-60"
-          >
-            {submitting ? 'Creating...' : 'Create Employee'}
-          </button>
-        </form>
-      </section>
+      {userRole !== 'owner' && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700 text-sm">
+          Only workspace owners can add or revoke team members.
+        </div>
+      )}
 
-      <section>
-        <h3 className="text-lg font-bold text-gray-800 mb-3">Employee List</h3>
-        {loadingEmployees ? (
-          <p className="text-gray-500">Loading employees...</p>
-        ) : employees.length === 0 ? (
-          <p className="text-gray-500">No operators found for this workspace.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-600">
-                  <th className="text-left p-3 border-b font-bold">Email</th>
-                  <th className="text-left p-3 border-b font-bold">Created</th>
-                  <th className="text-center p-3 border-b font-bold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((employee) => (
-                  <tr key={employee.id} className="border-b hover:bg-gray-50 transition">
-                    <td className="p-3 text-gray-700">{employee.email}</td>
-                    <td className="p-3 text-gray-600">{formatTimestamp(employee.createdAt)}</td>
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => handleRevokeAccess(employee.id, employee.email)}
-                        className="bg-red-600 text-white px-3 py-1.5 rounded font-bold hover:bg-red-700 transition"
-                      >
-                        Revoke Access
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {isAddingMode && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
+          <h2 className="text-xl font-bold text-slate-800 mb-4">Add Employee</h2>
+          <form onSubmit={handleCreateEmployee} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input
+              type="text"
+              value={formData.firstName}
+              onChange={handleInputChange('firstName')}
+              placeholder="First Name"
+              required
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            <input
+              type="text"
+              value={formData.lastName}
+              onChange={handleInputChange('lastName')}
+              placeholder="Last Name"
+              required
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            <input
+              type="email"
+              value={formData.email}
+              onChange={handleInputChange('email')}
+              placeholder="Email"
+              required
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            <input
+              type="password"
+              value={formData.password}
+              onChange={handleInputChange('password')}
+              placeholder="Password"
+              required
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            <select
+              value={formData.role}
+              onChange={handleInputChange('role')}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            >
+              <option value="Admin">Admin</option>
+              <option value="Operator">Operator</option>
+            </select>
 
-      <section>
-        <h3 className="text-lg font-bold text-gray-800 mb-3">System Audit Trail</h3>
-        {loadingAudit ? (
-          <p className="text-gray-500">Loading audit trail...</p>
-        ) : auditLogs.length === 0 ? (
-          <p className="text-gray-500">No audit logs available for this workspace.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-600">
-                  <th className="text-left p-3 border-b font-bold">Action</th>
-                  <th className="text-left p-3 border-b font-bold">User</th>
-                  <th className="text-left p-3 border-b font-bold">Time</th>
+            <div className="md:col-span-2 flex justify-end gap-3 mt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddingMode(false)}
+                className="bg-slate-100 text-slate-700 font-semibold px-5 py-2.5 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
+              >
+                {isSaving ? 'Creating...' : 'Create Employee'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <h2 className="text-xl font-bold text-slate-800 mb-4">Team Members</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse min-w-[640px]">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600">
+                <th className="text-left p-3 border-b font-bold">Name</th>
+                <th className="text-left p-3 border-b font-bold">Email</th>
+                <th className="text-left p-3 border-b font-bold">Role</th>
+                <th className="text-left p-3 border-b font-bold">Status</th>
+                <th className="text-right p-3 border-b font-bold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={5} className="p-4 text-slate-500 text-center">Loading team members...</td>
                 </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((log) => (
-                  <tr key={log.id} className="border-b hover:bg-gray-50 transition">
-                    <td className="p-3 text-gray-700">{log.action || '-'}</td>
-                    <td className="p-3 text-gray-700">{log.userEmail || log.userId || '-'}</td>
-                    <td className="p-3 text-gray-600">{formatTimestamp(log.timestamp)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              )}
+              {!isLoading && teamMembers.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-4 text-slate-500 text-center">No team members found.</td>
+                </tr>
+              )}
+              {teamMembers.map((employee) => (
+                <tr key={employee.id} className="border-b hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-slate-700 font-medium">{employee.name}</td>
+                  <td className="p-3 text-slate-600">{employee.email}</td>
+                  <td className="p-3 text-slate-700">{employee.role}</td>
+                  <td className="p-3">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                        employee.status === 'Online'
+                          ? 'bg-green-100 text-green-700 border-green-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {employee.status || 'Offline'}
+                    </span>
+                  </td>
+                  <td className="p-3 text-right">
+                    <button
+                      onClick={() => handleOpenAudit(employee)}
+                      className="text-indigo-600 hover:text-indigo-900 font-medium mr-4"
+                    >
+                      Audit
+                    </button>
+                    <button
+                      disabled={userRole !== 'owner'}
+                      onClick={() => handleRevokeAccess(employee.id)}
+                      className="bg-red-50 text-red-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Revoke Access
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {isAuditModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white p-6 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800">
+                Audit Logs: {selectedEmployee?.firstName || selectedEmployee?.name || 'Employee'}
+              </h3>
+              <button
+                onClick={() => setIsAuditModalOpen(false)}
+                className="text-slate-500 hover:text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="overflow-y-auto mt-4 pr-1">
+              {isLoadingLogs ? (
+                <div className="py-8 text-center text-slate-500">Loading...</div>
+              ) : auditLogs.length === 0 ? (
+                <div className="py-8 text-center text-slate-500">No activity found.</div>
+              ) : (
+                <ul className="space-y-3">
+                  {auditLogs.map((log) => (
+                    <li key={log.id} className="border border-slate-200 rounded-lg p-3">
+                      <p className="text-sm font-semibold text-slate-800">{log.action || '-'}</p>
+                      <p className="text-sm text-slate-600 mt-1">{log.details || '-'}</p>
+                      <p className="text-xs text-slate-400 mt-2">
+                        {log.timestamp
+                          ? log.timestamp.toDate().toLocaleString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true
+                            })
+                          : 'Just now'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   );
 };

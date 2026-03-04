@@ -7,6 +7,7 @@ import { CATEGORY_OPTIONS } from "../utils/categories";
 import { db, auth } from "../firebase"; // Using your existing firebase connection
 import { collection, addDoc, serverTimestamp, writeBatch, doc } from "firebase/firestore";
 import { useAuth } from '../context/AuthContext';
+import { logAudit } from '../utils/auditLogger';
 
 const AddInventory = () => {
   const { currentUser, workspaceId } = useAuth();
@@ -149,6 +150,18 @@ const AddInventory = () => {
 
     try {
       await batch.commit();
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId, 
+            currentUser, 
+            'ADDED_INVENTORY_BULK', 
+            `Added ${bulkItems.length} items via bulk entry` 
+          );
+        } catch (auditErr) {
+          console.error(auditErr);
+        }
+      }
       alert("✅ Bulk items saved to inventory!");
       setBulkItems([]);
       setAiInput("");
@@ -208,6 +221,7 @@ const AddInventory = () => {
 
     const safeBuyingPrice = toNumber(formData.buyingPrice);
     const safeQuantity = toNumber(formData.quantity);
+    const productName = String(formData.name || "").trim();
     const safeSellingPrice = toNumber(formData.sellingPrice);
     const safeDiscountPrice = toNumber(formData.discountPrice);
     const safeCategory = normalizeCategory(formData.category);
@@ -240,6 +254,21 @@ const AddInventory = () => {
         userPhone: String(formData.userPhone || "").trim(),
         timestamp: serverTimestamp()
       });
+
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId,
+            currentUser,
+            'ADDED_INVENTORY',
+            `Added product: ${productName}`
+          );
+          console.log('Audit fired successfully');
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
       alert("✅ Stock Added to Inventory!");
       setFormData({
         name: "",

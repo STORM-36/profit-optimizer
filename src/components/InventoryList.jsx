@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { CATEGORY_OPTIONS } from "../utils/categories";
 import { useAuth } from "../context/AuthContext";
+import { logAudit } from "../utils/auditLogger";
 
 const PAGE_SIZE = 50;
 
@@ -211,6 +212,20 @@ const InventoryList = () => {
 
     try {
       await deleteDoc(doc(db, "inventory", id));
+
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId,
+            currentUser,
+            'DELETED_PRODUCT',
+            `Deleted product: ${name || id}`
+          );
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
       alert("✅ Item deleted successfully!");
 
       setInventory((prev) => prev.filter((item) => item.id !== id));

@@ -1,13 +1,12 @@
 import React, { useEffect, Suspense, lazy } from 'react';
-import { auth } from './firebase';
-import { signOut } from 'firebase/auth';
-import { Navigate, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import AuthForm from './components/AuthForm';
-import TopNav from './components/TopNav';
 import Unauthorized from './components/Unauthorized';
+import Dashboard from './pages/Dashboard';
 import InventoryPage from './pages/InventoryPage';
 import OrdersPage from './pages/OrdersPage';
 import TeamManagement from './pages/TeamManagement';
+import AppLayout from './layouts/AppLayout';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -22,40 +21,15 @@ const LoadingComponent = () => (
 );
 
 function App() {
-  const { currentUser, userRole, loading } = useAuth();
-  const navigate = useNavigate();
+  const { currentUser, loading } = useAuth();
 
   useEffect(() => {
     validateThirdPartyLibraries();
   }, []);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    navigate('/login', { replace: true });
-  };
-
-  const menuItems = [
-    { to: '/dashboard', label: 'Dashboard' },
-    { to: '/orders', label: 'Orders' },
-    ...(userRole === 'owner' ? [{ to: '/team', label: 'Team Management' }] : []),
-    ...(userRole === 'owner' ? [{ to: '/settings', label: 'Settings' }] : [])
-  ];
-
   if (loading) {
     return <LoadingComponent />;
   }
-
-  const AppShell = () => (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      <TopNav
-        onLogout={handleLogout}
-        menuItems={menuItems}
-      />
-      <div className="max-w-4xl mx-auto p-4">
-        <Outlet />
-      </div>
-    </div>
-  );
 
   return (
     <Routes>
@@ -69,28 +43,29 @@ function App() {
       <Route
         element={
           <ProtectedRoute allowedRoles={['owner', 'operator']}>
-            <AppShell />
+            <AppLayout />
           </ProtectedRoute>
         }
       >
-        <Route path="/dashboard" element={<InventoryPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/orders" element={<OrdersPage />} />
-      </Route>
-
-      <Route
-        element={
-          <ProtectedRoute allowedRoles={['owner']}>
-            <AppShell />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/team" element={<TeamManagement />} />
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route
+          path="/team"
+          element={
+            <ProtectedRoute allowedRoles={['owner']}>
+              <TeamManagement />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/settings"
           element={
-            <Suspense fallback={<LoadingComponent />}>
-              <Settings goBack={() => navigate('/dashboard')} />
-            </Suspense>
+            <ProtectedRoute allowedRoles={['owner']}>
+              <Suspense fallback={<LoadingComponent />}>
+                <Settings />
+              </Suspense>
+            </ProtectedRoute>
           }
         />
       </Route>

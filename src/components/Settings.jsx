@@ -1,133 +1,213 @@
-import React, { useState } from 'react';
-import { auth, db } from '../firebase';
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { deleteUser, signOut } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate, Link } from 'react-router-dom';
+import { doc, updateDoc } from 'firebase/firestore';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { db, auth } from '../firebase';
+import { logAudit } from '../utils/auditLogger';
 
-const Settings = ({ goBack }) => {
-  const { currentUser, workspaceId, userRole } = useAuth();
-  const [isDeleting, setIsDeleting] = useState(false);
+const Settings = () => {
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    shopName: '',
+    phone: ''
+  });
 
-  // 1. ERASE DATA ONLY (Keep Account)
-  const handleEraseData = async () => {
-    if (userRole !== 'owner') {
-      alert('Only owners can access this action.');
-      return;
-    }
+  useEffect(() => {
+    if (!currentUser) return;
 
-    const confirm = window.prompt("⚠️ DANGER: This will delete ALL your order history.\nType 'DELETE' to confirm.");
-    
-    if (confirm !== 'DELETE') return;
+    setFormData({
+      firstName: currentUser?.firstName || '',
+      lastName: currentUser?.lastName || '',
+      shopName: currentUser?.shopName || '',
+      phone: currentUser?.phone || ''
+    });
+  }, [currentUser]);
 
-    setIsDeleting(true);
-    try {
-      const user = currentUser || auth.currentUser;
-      const effectiveWorkspaceId = workspaceId || user?.uid || null;
-      if (!user || !effectiveWorkspaceId) return;
-
-      // Find all orders for this workspace
-      const q = query(collection(db, "orders"), where("workspaceId", "==", effectiveWorkspaceId));
-      const snapshot = await getDocs(q);
-
-      // Delete them one by one
-      const deletePromises = snapshot.docs.map(document => 
-        deleteDoc(doc(db, "orders", document.id))
-      );
-
-      await Promise.all(deletePromises);
-      alert("✅ All data has been erased.");
-    } catch (error) {
-      console.error(error);
-      alert("❌ Error erasing data: " + error.message);
-    }
-    setIsDeleting(false);
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
   };
 
-  // 2. DELETE ACCOUNT (Nuclear Option)
-  const handleDeleteAccount = async () => {
-    if (userRole !== 'owner') {
-      alert('Only owners can access this action.');
+  const handleSaveProfile = async () => {
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, formData);
+
+      if (currentUser) {
+        try {
+          await logAudit(
+            currentUser.workspaceId,
+            currentUser,
+            'UPDATED_PROFILE',
+            'Updated account profile details'
+          );
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      setIsEditing(false);
+      alert('Profile saved successfully!');
+      window.location.reload();
+    } catch (error) {
+      console.error('Database Save Error:', error);
+      alert('Failed to save profile: ' + error.message);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!currentUser?.email) {
+      alert('No email found for this account.');
       return;
     }
 
-    const confirm = window.prompt("⛔ FINAL WARNING: This will delete your Account AND Data.\nThis cannot be undone.\n\nType 'DELETE' to confirm.");
-    
-    if (confirm !== 'DELETE') return;
-
-    setIsDeleting(true);
     try {
-      // Step A: Erase Data First
-      await handleEraseData(); 
-
-      // Step B: Delete User from Auth
-      const user = currentUser || auth.currentUser;
-      await deleteUser(user);
-      
-      alert("👋 Account deleted. Goodbye!");
-      // The App.jsx will automatically detect logout
+      await sendPasswordResetEmail(auth, currentUser.email);
+      alert('Password reset email sent. Please check your inbox.');
     } catch (error) {
-      console.error(error);
-      // Firebase requires a recent login to delete an account.
-      alert("⚠️ Security requires you to Login again before deleting your account.");
-      await signOut(auth);
+      console.error('Password reset failed:', error);
+      alert('Unable to send password reset email right now.');
     }
-    setIsDeleting(false);
+  };
+
+  const handleFieldChange = (field) => (event) => {
+    setFormData((previousForm) => ({
+      ...previousForm,
+      [field]: event.target.value
+    }));
   };
 
   return (
-    <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded-2xl shadow-xl border border-red-100">
-      
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <h2 className="text-2xl font-bold text-gray-800">⚙️ Settings & Privacy</h2>
-        <button onClick={goBack} className="text-gray-500 hover:text-gray-800">
-          ← Back to Dashboard
-        </button>
-      </div>
+    <div className="max-w-4xl mx-auto py-8 px-4 font-sans">
+      <h1 className="text-2xl font-bold text-slate-800 mb-6">Account & Workspace Settings</h1>
 
-      <div className="space-y-6">
-        {userRole !== 'owner' ? (
-          <div className="p-4 border border-yellow-200 bg-yellow-50 rounded-xl">
-            <h3 className="font-bold text-yellow-800 text-lg">Owner Access Required</h3>
-            <p className="text-sm text-yellow-700 mt-1">Only workspace owners can access Settings actions.</p>
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="text-2xl font-bold text-slate-800">Profile Details</h2>
+          <button
+            onClick={() => setIsEditing((previousState) => !previousState)}
+            className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg font-semibold hover:bg-slate-200"
+          >
+            {isEditing ? 'Cancel' : 'Edit Profile'}
+          </button>
+        </div>
+
+        {!isEditing ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Full Name</p>
+              <p className="text-slate-800 font-semibold mt-1">
+                {[formData.firstName, formData.lastName].filter(Boolean).join(' ') || 'Not set'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Shop Name</p>
+              <p className="text-slate-800 font-semibold mt-1">{formData.shopName || currentUser?.shopName || 'Shop Admin'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Email</p>
+              <p className="text-slate-800 font-semibold mt-1">{currentUser?.email || 'Not available'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Phone Number</p>
+              <p className="text-slate-800 font-semibold mt-1">{formData.phone || 'Not set'}</p>
+            </div>
           </div>
         ) : (
-          <>
-        
-        {/* OPTION 1: Erase Data */}
-        <div className="p-4 border border-orange-200 bg-orange-50 rounded-xl">
-          <h3 className="font-bold text-orange-800 text-lg">🧹 Clear History</h3>
-          <p className="text-sm text-orange-700 mt-1">
-            Delete all your orders and customers from the database. <br/>
-            Your account will remain active.
-          </p>
-          <button 
-            onClick={handleEraseData}
-            disabled={isDeleting}
-            className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition w-full"
-          >
-            {isDeleting ? "Processing..." : "Erase All Data"}
-          </button>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">First Name</label>
+              <input
+                type="text"
+                value={formData.firstName}
+                onChange={handleFieldChange('firstName')}
+                className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Last Name</label>
+              <input
+                type="text"
+                value={formData.lastName}
+                onChange={handleFieldChange('lastName')}
+                className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Shop Name</label>
+              <input
+                type="text"
+                value={formData.shopName}
+                onChange={handleFieldChange('shopName')}
+                className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Phone</label>
+              <input
+                type="text"
+                value={formData.phone}
+                onChange={handleFieldChange('phone')}
+                className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
 
-        {/* OPTION 2: Delete Account */}
-        <div className="p-4 border border-red-200 bg-red-50 rounded-xl">
-          <h3 className="font-bold text-red-800 text-lg">💣 Delete Account</h3>
-          <p className="text-sm text-red-700 mt-1">
-            Permanently delete your account and all data. <br/>
-            <strong>This action is irreversible.</strong>
-          </p>
-          <button 
-            onClick={handleDeleteAccount}
-            disabled={isDeleting}
-            className="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition w-full"
-          >
-            {isDeleting ? "Goodbye..." : "Delete My Account"}
-          </button>
-        </div>
-          </>
+            <div className="md:col-span-2">
+              <button
+                onClick={handleSaveProfile}
+                className="mt-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-indigo-700"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
         )}
+      </div>
 
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
+        <h2 className="text-xl font-bold text-slate-800">Team & Permissions</h2>
+        <p className="text-slate-500 mt-2">Manage your employees, operators, and workspace access.</p>
+        <Link
+          to="/team"
+          className="inline-block mt-4 bg-indigo-50 text-indigo-600 font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-100 transition-colors"
+        >
+          Open Team Management
+        </Link>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleLogout}
+            className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-lg font-semibold hover:bg-slate-200"
+          >
+            Log Out
+          </button>
+          <button
+            onClick={handlePasswordReset}
+            className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-lg font-semibold hover:bg-slate-200"
+          >
+            Reset Password
+          </button>
+        </div>
+
+        <div className="mt-8 border border-red-200 bg-red-50 p-5 rounded-xl">
+          <h3 className="text-lg font-bold text-red-700">Danger Zone</h3>
+          <p className="text-sm text-red-600 mt-2">
+            Terminating your account will permanently remove your workspace access and cannot be undone.
+          </p>
+          <button
+            onClick={() => window.confirm('Are you sure? This action is permanent and cannot be undone.')}
+            className="mt-4 bg-red-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-red-700"
+          >
+            Terminate Account
+          </button>
+        </div>
       </div>
     </div>
   );

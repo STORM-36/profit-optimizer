@@ -1,13 +1,15 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { logAudit } from '../utils/auditLogger';
 
 const AuthContext = createContext({
   currentUser: null,
   userRole: null,
   workspaceId: null,
-  loading: true
+  loading: true,
+  logout: async () => {}
 });
 
 export const AuthProvider = ({ children }) => {
@@ -15,27 +17,77 @@ export const AuthProvider = ({ children }) => {
   const [userRole, setUserRole] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const previousUserIdRef = useRef(null);
+
+  const logout = async () => {
+    try {
+      if (currentUser?.uid) {
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          status: 'Offline',
+          lastLogout: serverTimestamp()
+        });
+
+        await logAudit(
+          currentUser.workspaceId,
+          currentUser,
+          'LOGGED_OUT',
+          'User signed out manually'
+        );
+      }
+    } catch (error) {
+      console.error('Presence update failed on logout:', error);
+    }
+
+    await signOut(auth);
+  };
 
   useEffect(() => {
+    const handleTabClose = () => {
+      const activeUserId = auth.currentUser?.uid || currentUser?.uid;
+      if (!activeUserId) return;
+
+      updateDoc(doc(db, 'users', activeUserId), {
+        status: 'Offline',
+        lastLogout: serverTimestamp()
+      });
+    };
+
+    window.addEventListener('beforeunload', handleTabClose);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setLoading(true);
       setCurrentUser(user);
 
+      const previousUserId = previousUserIdRef.current;
+      if (previousUserId && (!user || user.uid !== previousUserId)) {
+        try {
+          await updateDoc(doc(db, 'users', previousUserId), {
+            status: 'Offline',
+            lastLogout: serverTimestamp()
+          });
+        } catch (presenceError) {
+          console.error('Presence update failed while switching account:', presenceError);
+        }
+      }
+
       if (!user) {
         setUserRole(null);
         setWorkspaceId(null);
+        previousUserIdRef.current = null;
         setLoading(false);
         return;
       }
+
+      previousUserIdRef.current = user.uid;
 
       try {
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
 
         if (userSnap.exists()) {
-          const profile = userSnap.data();
+          const userData = userSnap.data();
 
-          if (profile?.role === 'revoked') {
+          if (userData?.role === 'revoked') {
             alert('Your access to this workspace has been revoked.');
             await signOut(auth);
             setUserRole(null);
@@ -43,20 +95,55 @@ export const AuthProvider = ({ children }) => {
             return;
           }
 
-          setUserRole(profile?.role || null);
-          setWorkspaceId(profile?.workspaceId || null);
+          await updateDoc(userRef, {
+            status: 'Online',
+            lastLogin: serverTimestamp()
+          });
+
+          await logAudit(
+            userData.workspaceId,
+            { uid: user.uid, email: user.email, firstName: userData.firstName },
+            'LOGGED_IN',
+            'User signed into the system'
+          );
+
+          setUserRole(userData?.role || null);
+          setWorkspaceId(userData?.workspaceId || null);
+          setCurrentUser({
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            ...userData
+          });
         } else {
           const fallbackProfile = {
             email: user.email || '',
             role: 'operator',
             workspaceId: user.uid,
+            status: 'Online',
+            lastLogin: serverTimestamp(),
             createdAt: serverTimestamp()
           };
 
           await setDoc(userRef, fallbackProfile);
 
+          await logAudit(
+            fallbackProfile.workspaceId,
+            { uid: user.uid, email: user.email, firstName: fallbackProfile.firstName },
+            'LOGGED_IN',
+            'User signed into the system'
+          );
+
           setUserRole(fallbackProfile.role);
           setWorkspaceId(fallbackProfile.workspaceId);
+          setCurrentUser({
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            ...fallbackProfile
+          });
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -67,11 +154,14 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      window.removeEventListener('beforeunload', handleTabClose);
+      unsubscribe();
+    };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ currentUser, userRole, workspaceId, loading }}>
+    <AuthContext.Provider value={{ currentUser, userRole, workspaceId, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );

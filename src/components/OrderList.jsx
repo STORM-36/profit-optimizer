@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { db, auth } from '../firebase'; 
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
-import Dashboard from './Dashboard'; // 👈 NEW: Import the Charts!
+import Dashboard from '../pages/Dashboard'; // 👈 NEW: Import the Charts!
 import Receipt from './Receipt'; // 👈 Import Receipt
 import { useAuth } from '../context/AuthContext';
+import { logAudit } from '../utils/auditLogger';
 
 const OrderList = () => {
   const { currentUser, workspaceId, userRole } = useAuth();
@@ -43,6 +44,19 @@ const OrderList = () => {
     await updateDoc(orderRef, {
       status: newStatus
     });
+
+    if (currentUser) {
+      try {
+        await logAudit(
+          currentUser.workspaceId,
+          currentUser,
+          'UPDATED_ORDER',
+          `Updated order status: ${id} -> ${newStatus}`
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
   // 3. 🗑️ DELETE FUNCTION
@@ -54,6 +68,19 @@ const OrderList = () => {
 
     if(window.confirm("Are you sure you want to delete this order permanently?")) {
         await deleteDoc(doc(db, "orders", id));
+
+        if (currentUser) {
+          try {
+            await logAudit(
+              currentUser.workspaceId,
+              currentUser,
+              'DELETED_ORDER',
+              `Deleted order: ${id}`
+            );
+          } catch (err) {
+            console.error(err);
+          }
+        }
     }
   };
 
