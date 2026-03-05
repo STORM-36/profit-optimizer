@@ -83,20 +83,20 @@ const Dashboard = () => {
         <p className="text-sm text-slate-400 mt-1">{currentDate}</p>
       </div>
 
-      <div className="bg-[#6366f1] text-white rounded-2xl p-8 flex justify-between items-center mb-8">
+      <div className="bg-[#6366f1] text-white rounded-2xl p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
-          <p className="text-base text-indigo-100">Good morning {currentUser?.firstName || 'Owner'} 👋</p>
-          <h2 className="text-3xl font-bold mt-1">{currentUser?.shopName || 'My Boutique'}</h2>
-          <p className="text-indigo-100 mt-3">Your shop is performing 12.4% better than last month.</p>
+          <p className="text-sm md:text-base text-indigo-100">Good morning {currentUser?.firstName || 'Owner'} 👋</p>
+          <h2 className="text-2xl md:text-4xl font-bold mt-1">{currentUser?.shopName || 'My Boutique'}</h2>
+          <p className="text-sm md:text-base text-indigo-100 mt-3">Your shop is performing 12.4% better than last month.</p>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-row flex-wrap justify-center gap-4 w-full md:w-auto">
           <div className="bg-white/20 rounded-full px-6 py-3 text-center">
-            <p className="text-xl font-bold">Rs. 9,218</p>
+            <p className="text-lg md:text-xl font-bold">Rs. 9,218</p>
             <p className="text-xs text-indigo-100 mt-1">Avg daily revenue</p>
           </div>
           <div className="bg-white/20 rounded-full px-6 py-3 text-center">
-            <p className="text-xl font-bold">23.6%</p>
+            <p className="text-lg md:text-xl font-bold">23.6%</p>
             <p className="text-xs text-indigo-100 mt-1">Profit margin</p>
           </div>
         </div>

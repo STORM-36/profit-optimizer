@@ -203,8 +203,8 @@ const TeamManagement = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4 font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+    <div className="w-full max-w-[100vw] overflow-x-hidden px-4 md:px-8 box-border">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Team & Workspace Access</h1>
           <p className="text-slate-500 mt-1">Manage who has access to your store.</p>
@@ -213,7 +213,7 @@ const TeamManagement = () => {
         <button
           disabled={userRole !== 'owner'}
           onClick={() => setIsAddingMode((previousState) => !previousState)}
-          className="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full md:w-auto bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Add New Employee
         </button>
@@ -226,7 +226,7 @@ const TeamManagement = () => {
       )}
 
       {isAddingMode && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
+        <div className="w-full box-border bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
           <h2 className="text-xl font-bold text-slate-800 mb-4">Add Employee</h2>
           <form onSubmit={handleCreateEmployee} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <input
@@ -290,10 +290,10 @@ const TeamManagement = () => {
         </div>
       )}
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+      <div className="w-full box-border bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <h2 className="text-xl font-bold text-slate-800 mb-4">Team Members</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse min-w-[640px]">
+        <div className="overflow-x-auto w-full pb-2">
+          <table className="min-w-full text-sm border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-600">
                 <th className="text-left p-3 border-b font-bold">Name</th>

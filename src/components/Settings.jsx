@@ -86,6 +86,7 @@ const Settings = () => {
     <div className="max-w-4xl mx-auto py-8 px-4 font-sans">
       <h1 className="text-2xl font-bold text-slate-800 mb-6">Account & Workspace Settings</h1>
 
+      {/* --- PROFILE DETAILS (Visible to Everyone) --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
         <div className="flex items-start justify-between gap-4">
           <h2 className="text-2xl font-bold text-slate-800">Profile Details</h2>
@@ -138,15 +139,20 @@ const Settings = () => {
                 className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Shop Name</label>
-              <input
-                type="text"
-                value={formData.shopName}
-                onChange={handleFieldChange('shopName')}
-                className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
+            
+            {/* Only Owner can edit Shop Name */}
+            {currentUser?.role === 'owner' && (
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Shop Name</label>
+                <input
+                  type="text"
+                  value={formData.shopName}
+                  onChange={handleFieldChange('shopName')}
+                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Phone</label>
               <input
@@ -169,17 +175,21 @@ const Settings = () => {
         )}
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
-        <h2 className="text-xl font-bold text-slate-800">Team & Permissions</h2>
-        <p className="text-slate-500 mt-2">Manage your employees, operators, and workspace access.</p>
-        <Link
-          to="/team"
-          className="inline-block mt-4 bg-indigo-50 text-indigo-600 font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-100 transition-colors"
-        >
-          Open Team Management
-        </Link>
-      </div>
+      {/* --- TEAM & PERMISSIONS (Owner Only) --- */}
+      {currentUser?.role === 'owner' && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
+          <h2 className="text-xl font-bold text-slate-800">Team & Permissions</h2>
+          <p className="text-slate-500 mt-2">Manage your employees, operators, and workspace access.</p>
+          <Link
+            to="/team"
+            className="inline-block mt-4 bg-indigo-50 text-indigo-600 font-semibold px-5 py-2.5 rounded-lg hover:bg-indigo-100 transition-colors"
+          >
+            Open Team Management
+          </Link>
+        </div>
+      )}
 
+      {/* --- ACCOUNT ACTIONS (Visible to Everyone) --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
         <div className="flex items-center gap-3">
           <button
@@ -196,18 +206,21 @@ const Settings = () => {
           </button>
         </div>
 
-        <div className="mt-8 border border-red-200 bg-red-50 p-5 rounded-xl">
-          <h3 className="text-lg font-bold text-red-700">Danger Zone</h3>
-          <p className="text-sm text-red-600 mt-2">
-            Terminating your account will permanently remove your workspace access and cannot be undone.
-          </p>
-          <button
-            onClick={() => window.confirm('Are you sure? This action is permanent and cannot be undone.')}
-            className="mt-4 bg-red-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-red-700"
-          >
-            Terminate Account
-          </button>
-        </div>
+        {/* --- DANGER ZONE (Owner Only) --- */}
+        {currentUser?.role === 'owner' && (
+          <div className="mt-8 border border-red-200 bg-red-50 p-5 rounded-xl">
+            <h3 className="text-lg font-bold text-red-700">Danger Zone</h3>
+            <p className="text-sm text-red-600 mt-2">
+              Terminating your account will permanently remove your workspace access and cannot be undone.
+            </p>
+            <button
+              onClick={() => window.confirm('Are you sure? This action is permanent and cannot be undone.')}
+              className="mt-4 bg-red-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-red-700"
+            >
+              Terminate Account
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

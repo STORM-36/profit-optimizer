@@ -61,7 +61,7 @@ function App() {
         <Route
           path="/settings"
           element={
-            <ProtectedRoute allowedRoles={['owner']}>
+            <ProtectedRoute allowedRoles={['owner', 'operator']}>
               <Suspense fallback={<LoadingComponent />}>
                 <Settings />
               </Suspense>
