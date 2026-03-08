@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase'; 
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  increment,
+  doc,
+  updateDoc,
+  query,
+  where,
+  getDocs
+} from 'firebase/firestore';
 import * as XLSX from 'xlsx'; // Import Excel Tool
 import UnitCostCalculator from './UnitCostCalculator'; // 👈 NEW IMPORT
 
@@ -43,6 +53,7 @@ const SmartForm = () => {
   const { currentUser, workspaceId } = useAuth();
   const [inputText, setInputText] = useState('');
   const [showCalculator, setShowCalculator] = useState(false); // 👈 NEW STATE FOR CALCULATOR
+  const [inventoryOptions, setInventoryOptions] = useState([]);
   
   const [manualData, setManualData] = useState({
     name: '',
@@ -53,6 +64,8 @@ const SmartForm = () => {
     deliveryCost: 120, // Default to outside Dhaka initially
     adCost: '',        // FIXED: Now starts blank
     category: '',
+    productName: '',
+    inventoryId: '',
     subcategory: '',
     sku: '',
     discountPrice: '',
@@ -113,6 +126,38 @@ const SmartForm = () => {
 
   }, [inputText]);
 
+  useEffect(() => {
+    const effectiveWorkspaceId = workspaceId || currentUser?.workspaceId || currentUser?.uid || null;
+    if (!effectiveWorkspaceId) {
+      setInventoryOptions([]);
+      return;
+    }
+
+    const fetchInventoryOptions = async () => {
+      try {
+        const inventoryQuery = query(
+          collection(db, 'inventory'),
+          where('workspaceId', '==', effectiveWorkspaceId)
+        );
+        const snapshot = await getDocs(inventoryQuery);
+        const options = snapshot.docs
+          .map((inventoryDoc) => ({
+            id: inventoryDoc.id,
+            ...inventoryDoc.data()
+          }))
+          .filter((item) => item?.name)
+          .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+        setInventoryOptions(options);
+      } catch (error) {
+        console.error('Error loading inventory products for order form:', error);
+        setInventoryOptions([]);
+      }
+    };
+
+    fetchInventoryOptions();
+  }, [workspaceId, currentUser?.workspaceId, currentUser?.uid]);
+
   // � NEW: HANDLE APPLY COST FROM CALCULATOR
   const handleApplyUnitCost = (unitCost) => {
     const safeCost = sanitizeNumber(unitCost);
@@ -167,6 +212,8 @@ const SmartForm = () => {
         adCost: sanitizeNumber(ads || 0),
         discountPrice: sanitizeNumber(discount || 0),
         category: sanitizeInput(safeCategory),
+        productName: sanitizeInput(manualData.productName),
+        inventoryId: sanitizeInput(manualData.inventoryId),
         subcategory: sanitizeInput(manualData.subcategory),
         sku: sanitizeInput(manualData.sku),
         addedBy: safeAddedBy,
@@ -174,6 +221,28 @@ const SmartForm = () => {
         netProfit: netProfit,
         timestamp: serverTimestamp()
       });
+
+      // Auto-deduct inventory right after order save using exact inventory doc id.
+      // SmartForm has no explicit quantity state, so each saved order deducts 1 unit.
+      try {
+        const orderQuantity = 1;
+        const selectedInventoryId = sanitizeInput(manualData.inventoryId || '');
+
+        if (selectedInventoryId) {
+          const invRef = doc(db, 'inventory', selectedInventoryId);
+          await updateDoc(invRef, {
+            quantity: increment(-orderQuantity)
+          });
+          console.log('Successfully deducted stock for inventoryId:', selectedInventoryId);
+        } else {
+          console.error('Inventory deduction skipped: inventoryId missing for order', {
+            orderId: createdOrder.id,
+            selectedInventoryId
+          });
+        }
+      } catch (inventoryError) {
+        console.error('Inventory auto-deduction failed:', inventoryError);
+      }
 
       if (currentUser) {
         try {
@@ -194,7 +263,7 @@ const SmartForm = () => {
         name: '', phone: '', address: '',
         sellingPrice: '', productCost: '',
         deliveryCost: 120, adCost: '',
-        category: '', subcategory: '', sku: '',
+        category: '', productName: '', inventoryId: '', subcategory: '', sku: '',
         discountPrice: '',
         addedBy: '', userPhone: ''
       });
@@ -284,6 +353,31 @@ const SmartForm = () => {
               className="w-full p-2 border rounded font-bold text-gray-700"
               placeholder="e.g. Sneakers"
             />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500">Product (Inventory)</label>
+            <select
+              value={manualData.inventoryId}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                const selectedProduct = inventoryOptions.find((item) => item.id === selectedId);
+
+                setManualData((previousData) => ({
+                  ...previousData,
+                  inventoryId: selectedId,
+                  productName: selectedProduct?.name || '',
+                  sku: selectedProduct?.sku || previousData.sku
+                }));
+              }}
+              className="w-full p-2 border rounded font-bold text-gray-700"
+            >
+              <option value="">Select from inventory</option>
+              {inventoryOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500">SKU</label>
