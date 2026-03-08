@@ -1,17 +1,63 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../firebase';
 
 const AppLayout = () => {
   const { currentUser } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [orderCount, setOrderCount] = useState(0);
+  const [inventoryCount, setInventoryCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
 
+  useEffect(() => {
+    if (!currentUser?.workspaceId) {
+      setOrderCount(0);
+      setInventoryCount(0);
+      return;
+    }
+
+    const ordersQuery = query(
+      collection(db, 'orders'),
+      where('workspaceId', '==', currentUser.workspaceId)
+    );
+    const inventoryQuery = query(
+      collection(db, 'inventory'),
+      where('workspaceId', '==', currentUser.workspaceId)
+    );
+
+    const unsubscribeOrders = onSnapshot(
+      ordersQuery,
+      (snapshot) => setOrderCount(snapshot.size),
+      (error) => {
+        console.error('Realtime orders listener failed:', error);
+        setOrderCount(0);
+      }
+    );
+
+    const unsubscribeInventory = onSnapshot(
+      inventoryQuery,
+      (snapshot) => setInventoryCount(snapshot.size),
+      (error) => {
+        console.error('Realtime inventory listener failed:', error);
+        setInventoryCount(0);
+      }
+    );
+
+    return () => {
+      unsubscribeOrders();
+      unsubscribeInventory();
+    };
+  }, [currentUser?.workspaceId]);
+
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
+  const sidebarLinkBase = 'flex items-center justify-between w-full';
+
   const navItemClass = ({ isActive }) =>
-    `w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors ${
+    `${sidebarLinkBase} px-3 py-2 text-sm rounded-lg transition-colors ${
       isActive
         ? 'bg-indigo-600 text-white'
         : 'text-slate-200 hover:bg-slate-800'
@@ -49,17 +95,17 @@ const AppLayout = () => {
         <div className="py-4 px-4 md:px-6 flex-1 flex flex-col">
           <div>
             <p className="text-xs text-slate-400 font-bold tracking-wider mt-6 mb-2">MAIN</p>
-            <nav className="space-y-1 pl-6">
+            <nav className="space-y-1">
               <NavLink to="/dashboard" onClick={closeMobileMenu} className={navItemClass}>
                 <span>Dashboard</span>
               </NavLink>
               <NavLink to="/orders" onClick={closeMobileMenu} className={navItemClass}>
                 <span>Orders</span>
-                <span className="text-xs font-bold bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">24</span>
+                <span className="text-xs font-bold bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{orderCount}</span>
               </NavLink>
               <NavLink to="/inventory" onClick={closeMobileMenu} className={navItemClass}>
                 <span>Inventory</span>
-                <span className="text-xs font-bold bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">3</span>
+                <span className="text-xs font-bold bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{inventoryCount}</span>
               </NavLink>
             </nav>
 
@@ -68,7 +114,7 @@ const AppLayout = () => {
               <Link
                 to="#"
                 onClick={closeMobileMenu}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg"
+                className={`${sidebarLinkBase} px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg`}
               >
                 <span>Bulk Import</span>
                 <span className="text-xs font-bold bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">AI</span>
@@ -76,7 +122,7 @@ const AppLayout = () => {
               <Link
                 to="#"
                 onClick={closeMobileMenu}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg"
+                className={`${sidebarLinkBase} px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg`}
               >
                 <span>OCR Scanner</span>
                 <span className="text-xs font-bold bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">AI</span>
@@ -88,9 +134,10 @@ const AppLayout = () => {
               <Link
                 to="#"
                 onClick={closeMobileMenu}
-                className="w-full flex items-center px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg"
+                className={`${sidebarLinkBase} px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-lg`}
               >
-                Analytics
+                <span>Analytics</span>
+                <span />
               </Link>
             </nav>
           </div>
@@ -107,15 +154,18 @@ const AppLayout = () => {
             <Link
               to="/settings"
               onClick={closeMobileMenu}
-              className="flex items-center gap-3 p-3 mt-4 rounded-xl hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
+              className={`${sidebarLinkBase} px-3 py-2 mt-4 rounded-xl hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700`}
             >
-              <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm font-bold">
-                {(currentUser?.shopName || 'Shop Admin').charAt(0).toUpperCase()}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shrink-0">
+                  {(currentUser?.shopName || 'Shop Admin').charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-100 truncate">{currentUser?.shopName || 'Shop Admin'}</p>
+                  <p className="text-xs text-slate-400 truncate">{currentUser?.email}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-100 truncate">{currentUser?.shopName || 'Shop Admin'}</p>
-                <p className="text-xs text-slate-400 truncate">{currentUser?.email}</p>
-              </div>
+              <span />
             </Link>
           </div>
         </div>
